@@ -3,10 +3,14 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 export interface Reservation {
   id: string;
   userId: string;
+  userName?: string;
   date: string;
   time: string;
   partySize: number;
   specialRequests?: string;
+  unitId?: string;
+  unitName?: string;
+  serviceId?: string;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   createdAt: string;
   updatedAt: string;
@@ -18,6 +22,9 @@ export class ReservationAPI {
     time: string;
     partySize: number;
     specialRequests?: string;
+    unitId?: string;
+    unitName?: string;
+    serviceId?: string;
   }): Promise<Reservation> {
     const response = await fetch(`${API_URL}/reservations`, {
       method: 'POST',

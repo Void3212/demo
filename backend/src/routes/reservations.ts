@@ -10,7 +10,7 @@ export function createReservationRoutes(db: Database<sqlite3.Database, sqlite3.S
   // Create a new reservation
   router.post('/', async (req: Request, res: Response) => {
     try {
-      const { userId, date, time, partySize, specialRequests } = req.body;
+      const { userId, date, time, partySize, unitId, unitName, serviceId, specialRequests } = req.body;
 
       // Validation
       if (!userId || !date || !time || !partySize) {
@@ -32,6 +32,9 @@ export function createReservationRoutes(db: Database<sqlite3.Database, sqlite3.S
         date,
         time,
         partySize,
+        unitId,
+        unitName,
+        serviceId,
         specialRequests,
         status: 'pending'
       });

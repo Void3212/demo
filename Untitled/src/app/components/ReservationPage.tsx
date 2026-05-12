@@ -1,321 +1,104 @@
-import { useState } from "react";
+﻿import { useEffect, useMemo, useState } from "react";
+import { useReservationUnits } from "../../hooks/useReservationUnits";
+import { ReservationAPI, type Reservation } from "../../api/reservationAPI";
+import { type User } from "../data/users";
 
 interface ReservationPageProps {
   onNavigateBack: () => void;
+  user: User;
 }
-
-type Table = {
-  id: string;
-  name: string;
-  imageUrl: string;
-  description: string;
-};
-
-type ServiceCategory = {
-  id: string;
-  label: string;
-  subtitle: string;
-};
-
-const serviceCategories: ServiceCategory[] = [
-  { id: "billiard", label: "Billiard", subtitle: "4 tables" },
-  { id: "karaoke", label: "Karaoke", subtitle: "3 machines" },
-  { id: "darts", label: "Darts", subtitle: "3 boards" },
-  { id: "basketball", label: "Basketball", subtitle: "2 courts" },
-  { id: "function-room", label: "Function Room", subtitle: "1 room" },
-];
-
-const billiardTables: Table[] = [
-  {
-    id: "billiard-1",
-    name: "Table 1",
-    imageUrl: "https://via.placeholder.com/280x180.png?text=Table+1",
-    description: "Corner table with soft lighting.",
-  },
-  {
-    id: "billiard-2",
-    name: "Table 2",
-    imageUrl: "https://via.placeholder.com/280x180.png?text=Table+2",
-    description: "Center pool table with premium cues.",
-  },
-  {
-    id: "billiard-3",
-    name: "Table 3",
-    imageUrl: "https://via.placeholder.com/280x180.png?text=Table+3",
-    description: "Large table with private seating.",
-  },
-  {
-    id: "billiard-4",
-    name: "Table 4",
-    imageUrl: "https://via.placeholder.com/280x180.png?text=Table+4",
-    description: "Cozy table near the bar.",
-  },
-];
-
-const karaokeRooms: Table[] = [
-  { id: "karaoke-1", name: "Room 1", imageUrl: "https://via.placeholder.com/280x180.png?text=Karaoke+1", description: "Private room for 8 guests." },
-  { id: "karaoke-2", name: "Room 2", imageUrl: "https://via.placeholder.com/280x180.png?text=Karaoke+2", description: "Stage lighting and sound system." },
-  { id: "karaoke-3", name: "Room 3", imageUrl: "https://via.placeholder.com/280x180.png?text=Karaoke+3", description: "Large seating lounge." },
-];
-
-const dartsBoards: Table[] = [
-  { id: "darts-1", name: "Board 1", imageUrl: "https://via.placeholder.com/280x180.png?text=Darts+1", description: "Regulation electronic board." },
-  { id: "darts-2", name: "Board 2", imageUrl: "https://via.placeholder.com/280x180.png?text=Darts+2", description: "Premium scoring system." },
-  { id: "darts-3", name: "Board 3", imageUrl: "https://via.placeholder.com/280x180.png?text=Darts+3", description: "Cozy corner layout." },
-];
-
-const basketballCourts: Table[] = [
-  { id: "basketball-1", name: "Court 1", imageUrl: "https://via.placeholder.com/280x180.png?text=Court+1", description: "Half-court with hoops." },
-  { id: "basketball-2", name: "Court 2", imageUrl: "https://via.placeholder.com/280x180.png?text=Court+2", description: "Full-court arcade experience." },
-];
-
-const functionRoom: Table[] = [
-  { id: "function-1", name: "Function Room", imageUrl: "https://via.placeholder.com/280x180.png?text=Function+Room", description: "Private event room with seating." },
-];
 
 const timeSlots = Array.from({ length: 24 }, (_, index) => `${index.toString().padStart(2, "0")}:00`);
 
-const slotAvailability: Record<string, Record<string, boolean>> = {
-  "billiard-1": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": false,
-    "12:00 PM": false,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": false,
-    "5:00 PM": true,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": false,
-    "9:00 PM": true,
-  },
-  "billiard-2": {
-    "9:00 AM": true,
-    "10:00 AM": false,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": false,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": false,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": false,
-  },
-  "billiard-3": {
-    "9:00 AM": false,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": true,
-    "2:00 PM": false,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": false,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "billiard-4": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": false,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": false,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": true,
-    "7:00 PM": false,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "karaoke-1": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": false,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": false,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": false,
-  },
-  "karaoke-2": {
-    "9:00 AM": true,
-    "10:00 AM": false,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": false,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": true,
-    "7:00 PM": false,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "karaoke-3": {
-    "9:00 AM": false,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": false,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "darts-1": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": false,
-    "12:00 PM": true,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": false,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": false,
-  },
-  "darts-2": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": false,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": false,
-    "5:00 PM": true,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "darts-3": {
-    "9:00 AM": false,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": false,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "basketball-1": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": false,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": false,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "basketball-2": {
-    "9:00 AM": true,
-    "10:00 AM": false,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": true,
-    "2:00 PM": true,
-    "3:00 PM": false,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": false,
-    "7:00 PM": true,
-    "8:00 PM": true,
-    "9:00 PM": true,
-  },
-  "function-1": {
-    "9:00 AM": true,
-    "10:00 AM": true,
-    "11:00 AM": true,
-    "12:00 PM": true,
-    "1:00 PM": false,
-    "2:00 PM": true,
-    "3:00 PM": true,
-    "4:00 PM": true,
-    "5:00 PM": true,
-    "6:00 PM": true,
-    "7:00 PM": true,
-    "8:00 PM": false,
-    "9:00 PM": true,
-  },
-};
+function formatDateLabel(dateString: string) {
+  return new Date(dateString).toLocaleDateString(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
+}
 
-const convertSlotTo24Hour = (slot: string) => {
-  const [time, period] = slot.split(" ");
-  const [hour, minute] = time.split(":").map(Number);
-  let normalizedHour = hour;
-  if (period === "PM" && hour < 12) normalizedHour += 12;
-  if (period === "AM" && hour === 12) normalizedHour = 0;
-  return `${normalizedHour.toString().padStart(2, "0")}:${minute.toString().padStart(2, "0")}`;
-};
+function formatDetailDate(dateString: string) {
+  return new Date(dateString).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-const normalizedSlotAvailability: Record<string, Record<string, boolean>> = Object.fromEntries(
-  Object.entries(slotAvailability).map(([itemId, availability]) => [
-    itemId,
-    Object.fromEntries(
-      Object.entries(availability).map(([slot, available]) => [convertSlotTo24Hour(slot), available])
-    ),
-  ])
-);
-
-const serviceItems: Record<string, Table[]> = {
-  billiard: billiardTables,
-  karaoke: karaokeRooms,
-  darts: dartsBoards,
-  basketball: basketballCourts,
-  "function-room": functionRoom,
-};
-
-export default function ReservationPage({ onNavigateBack }: ReservationPageProps) {
-  const [selectedService, setSelectedService] = useState<string>(serviceCategories[0].id);
-  const [selectedItem, setSelectedItem] = useState<string>(billiardTables[0].id);
+export default function ReservationPage({ onNavigateBack, user }: ReservationPageProps) {
+  const { serviceCategories, unitsByService } = useReservationUnits();
+  const [selectedService, setSelectedService] = useState<string>(serviceCategories[0]?.id ?? "billiard");
+  const [selectedItem, setSelectedItem] = useState<string>("");
   const [selectedSlot, setSelectedSlot] = useState<string>("09:00");
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<string>("visa");
+  const [allReservations, setAllReservations] = useState<Reservation[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [reservationError, setReservationError] = useState<string | null>(null);
 
-  const items = serviceItems[selectedService];
-  const selectedAvailability = normalizedSlotAvailability[selectedItem] ?? {};
+  const items = unitsByService(selectedService);
   const selectedItemInfo = items.find((item) => item.id === selectedItem) ?? items[0];
   const serviceInfo = serviceCategories.find((service) => service.id === selectedService);
 
-  const changeService = (serviceId: string) => {
-    const nextItems = serviceItems[serviceId];
-    setSelectedService(serviceId);
-    setSelectedItem(nextItems[0].id);
-    setSelectedSlot("09:00");
+  useEffect(() => {
+    if (items.length && !items.some((item) => item.id === selectedItem)) {
+      setSelectedItem(items[0].id);
+      setSelectedSlot("09:00");
+    }
+  }, [items, selectedItem]);
+
+  const reservedSlotMap = useMemo(
+    () =>
+      new Map(
+        allReservations
+          .filter((reservation) => reservation.date === selectedDate && reservation.unitId === selectedItem)
+          .map((reservation) => [reservation.time, reservation] as [string, Reservation])
+      ),
+    [allReservations, selectedDate, selectedItem]
+  );
+
+  const selectedSlotReservation = reservedSlotMap.get(selectedSlot);
+
+  useEffect(() => {
+    const loadReservations = async () => {
+      try {
+        const data = await ReservationAPI.getAllReservations();
+        setAllReservations(data);
+      } catch (error) {
+        console.error("Failed to load reservations:", error);
+      }
+    };
+
+    loadReservations();
+  }, []);
+
+  const handleReserve = async () => {
+    if (!selectedItem || reservedSlotMap.has(selectedSlot)) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    setReservationError(null);
+
+    try {
+      const reservation = await ReservationAPI.createReservation(user.id, {
+        date: selectedDate,
+        time: selectedSlot,
+        partySize: 1,
+        specialRequests: `Reserved ${selectedItemInfo?.name} for ${serviceInfo?.label}`,
+        unitId: selectedItemInfo?.id ?? "",
+        unitName: selectedItemInfo?.name ?? "",
+        serviceId: selectedService,
+      });
+
+      setAllReservations((prev) => [reservation, ...prev]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to create reservation";
+      setReservationError(message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -328,7 +111,7 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
                 <p className="text-sm uppercase tracking-[0.35em] text-[#d94b1f]">Reservation Schedule</p>
                 <h1 className="mt-2 text-5xl font-[Alegreya-Bold] tracking-[-0.03em] text-[#0f2c4f] sm:text-6xl">{serviceInfo?.label}</h1>
                 <p className="mt-4 max-w-2xl text-sm text-slate-600 sm:text-base">
-                  Choose your experience, reserve the best slot, and finish your booking with a quick payment.
+                  Choose your experience, reserve the best slot, and finish your booking with a quick confirmation.
                 </p>
               </div>
               <button
@@ -357,7 +140,10 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
                     <button
                       key={service.id}
                       type="button"
-                      onClick={() => changeService(service.id)}
+                      onClick={() => {
+                        setSelectedService(service.id);
+                        setSelectedSlot("09:00");
+                      }}
                       className={`rounded-full border px-5 py-3 text-left text-sm font-semibold transition ${
                         isSelected
                           ? "border-[#ff4d0d] bg-[#ff7a05] text-white shadow-[0_10px_30px_rgba(255,87,35,0.22)]"
@@ -395,17 +181,19 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
                         setSelectedSlot("09:00");
                       }}
                       className={`group overflow-hidden rounded-[28px] border p-0 text-left transition duration-300 ${
-                        isSelected ? "border-[#ff4d0d] bg-[#fff4eb] shadow-[0_22px_48px_rgba(255,122,5,0.2)]" : "border-slate-200 bg-white hover:border-[#ff7a05]"
+                        isSelected
+                          ? "border-[#ff4d0d] bg-[#fff4eb] shadow-[0_22px_48px_rgba(255,122,5,0.2)]"
+                          : "border-slate-200 bg-white hover:border-[#ff7a05]"
                       }`}
                     >
                       <div className="relative h-[170px] overflow-hidden bg-slate-100">
                         <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover transition duration-300 group-hover:scale-105" />
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-4 py-3 text-white">
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-4 py-3 text-white">
                           <p className="text-base font-semibold">{item.name}</p>
                         </div>
                       </div>
                       <div className="space-y-2 bg-white px-5 py-5">
-                        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0a376e]">{item.name}</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.18em] text-[#0f2c4f]">{item.name}</p>
                         <p className="text-sm leading-6 text-slate-600">{item.description}</p>
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
@@ -420,7 +208,6 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
                 })}
               </div>
             </div>
-
           </div>
         </section>
 
@@ -446,30 +233,43 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
               />
             </div>
             <div className="rounded-full bg-[#fff0e3] px-4 py-3 text-sm font-semibold text-[#b7501f] shadow-sm">
-              {new Date(selectedDate).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
+              {formatDateLabel(selectedDate)}
             </div>
           </div>
 
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             {timeSlots.map((slot) => {
-              const isOpen = selectedAvailability[slot] ?? true;
-              const isSelected = selectedSlot === slot && isOpen;
+              const reservation = reservedSlotMap.get(slot);
+              const isReserved = Boolean(reservation);
+              const isReservedByCurrentUser = reservation?.userId === user.id;
+              const isSelected = selectedSlot === slot && !isReserved;
               return (
                 <button
                   key={slot}
                   type="button"
-                  onClick={() => isOpen && setSelectedSlot(slot)}
+                  onClick={() => !isReserved && setSelectedSlot(slot)}
+                  disabled={isReserved}
                   className={`flex items-center justify-between rounded-[28px] border px-4 py-4 text-left text-sm font-semibold transition duration-200 ${
-                    isOpen
-                      ? isSelected
-                        ? "border-[#ff7a05] bg-[#fff3e8] text-[#963f08] shadow-[0_12px_30px_rgba(255,122,5,0.16)]"
-                        : "border-slate-200 bg-white text-slate-900 hover:border-[#ff7a05]"
-                      : "border-[#f5c2c7] bg-[#f8d7da] text-[#842029] opacity-90"
+                    isReservedByCurrentUser
+                      ? "border-[#34a853] bg-[#e7f7eb] text-[#1d6f30]"
+                      : isReserved
+                      ? "border-[#d71f2a] bg-[#fdecea] text-[#9f2a2c]"
+                      : isSelected
+                      ? "border-[#ff7a05] bg-[#fff3e8] text-[#963f08] shadow-[0_12px_30px_rgba(255,122,5,0.16)]"
+                      : "border-slate-200 bg-white text-slate-900 hover:border-[#ff7a05]"
                   }`}
                 >
                   <span>{slot}</span>
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${isOpen ? "bg-[#ffedd5] text-[#b7501f]" : "bg-[#f5c2c7] text-[#842029]"}`}>
-                    {isOpen ? "Open" : "Closed"}
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                      isReservedByCurrentUser
+                        ? "bg-[#dcf5d8] text-[#1e682f]"
+                        : isReserved
+                        ? "bg-[#fecaca] text-[#9f2a2c]"
+                        : "bg-[#ffedd5] text-[#b7501f]"
+                    }`}
+                  >
+                    {isReservedByCurrentUser ? "Your reservation" : isReserved ? "Taken" : "Open"}
                   </span>
                 </button>
               );
@@ -478,11 +278,11 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
         </section>
 
         <aside className="rounded-[40px] border border-slate-200 bg-white p-6 shadow-[0_30px_80px_rgba(0,0,0,0.08)] lg:p-8">
-          <div className="rounded-[32px] bg-[#ff7a05] p-6 text-white shadow-[0_18px_45px_rgba(255,122,5,0.18)]">
+          <div className="rounded-[32px] bg-gradient-to-br from-[#ff7a05] to-[#dd4124] p-6 text-white shadow-[0_18px_45px_rgba(255,122,5,0.18)]">
             <p className="text-sm uppercase tracking-[0.35em] text-orange-100">Payment</p>
             <h2 className="mt-3 text-3xl font-semibold">Complete your booking</h2>
             <p className="mt-3 text-sm leading-6 text-orange-100/90">
-              Confirm your {serviceInfo?.label.toLowerCase()} reservation with a secure payment method and your contact details.
+              Secure your {serviceInfo?.label.toLowerCase()} reservation with the details below.
             </p>
           </div>
 
@@ -491,7 +291,7 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
               <p className="text-sm uppercase tracking-[0.35em] text-[#b7501f]">Reservation details</p>
               <div className="mt-4 space-y-3 text-sm text-slate-700">
                 <p>
-                  <span className="font-semibold text-slate-900">Date:</span> {new Date(selectedDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}
+                  <span className="font-semibold text-slate-900">Date:</span> {formatDetailDate(selectedDate)}
                 </p>
                 <p>
                   <span className="font-semibold text-slate-900">Unit:</span> {selectedItemInfo?.name}
@@ -500,7 +300,12 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
                   <span className="font-semibold text-slate-900">Slot:</span> {selectedSlot}
                 </p>
                 <p>
-                  <span className="font-semibold text-slate-900">Status:</span> {selectedAvailability[selectedSlot] ?? true ? "Available" : "Unavailable"}
+                  <span className="font-semibold text-slate-900">Status:</span>{' '}
+                  {selectedSlotReservation
+                    ? selectedSlotReservation.userId === user.id
+                      ? "Reserved by you"
+                      : "Taken"
+                    : "Available"}
                 </p>
               </div>
             </div>
@@ -536,8 +341,14 @@ export default function ReservationPage({ onNavigateBack }: ReservationPageProps
               <textarea rows={4} className="w-full rounded-[24px] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#ff7a05] focus:ring-2 focus:ring-[#ffdcc6]/70" placeholder="Add any requests or details" />
             </div>
 
-            <button className="mt-5 w-full rounded-[28px] bg-[#ff7a05] px-6 py-4 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(255,122,5,0.22)] transition hover:bg-[#e66b00]">
-              Reserve now
+            {reservationError && <p className="text-sm text-red-700">{reservationError}</p>}
+
+            <button
+              onClick={handleReserve}
+              disabled={isSubmitting || reservedSlotMap.has(selectedSlot)}
+              className="mt-5 w-full rounded-[28px] bg-[#ff7a05] px-6 py-4 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(255,122,5,0.22)] transition hover:bg-[#e66b00] disabled:cursor-not-allowed disabled:bg-[#f1c3a0]"
+            >
+              {reservedSlotMap.has(selectedSlot) ? "Slot reserved" : isSubmitting ? "Reserving..." : "Reserve now"}
             </button>
           </div>
         </aside>

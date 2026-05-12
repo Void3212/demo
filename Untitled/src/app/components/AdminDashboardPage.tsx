@@ -1,6 +1,12 @@
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { type Product, type ProductCategory } from "../data/products";
-import { type User } from "../data/users";
+import { type User, getUsers } from "../data/users";
+import { useReservationUnits } from "../../hooks/useReservationUnits";
+import { ReservationAPI, type Reservation } from "../../api/reservationAPI";
+import {
+  type ReservationServiceCategory,
+  type ReservationUnit,
+} from "../data/reservationData";
 import { useProducts } from "../../hooks/useProducts";
 
 const imageImports = import.meta.glob("../../assets/*.{png,jpg,jpeg,webp}", {
@@ -32,28 +38,10 @@ interface EditableProduct {
   imageUrl: string;
 }
 
-const roomCategories = [
-  { label: "Function Room", color: "bg-[#eff6ff] text-[#1f4fcc]" },
-  { label: "Billiard", color: "bg-[#fff1f0] text-[#b22222]" },
-  { label: "Darts", color: "bg-[#fff7e6] text-[#b57309]" },
-  { label: "Karaoke", color: "bg-[#f1f6ec] text-[#3d6d36]" },
-  { label: "Restobar", color: "bg-[#eef5ff] text-[#2a57a0]" },
-  { label: "Basketball Arcade", color: "bg-[#f3f1ff] text-[#473f99]" },
-];
-
-const times = [
-  "9:00",
-  "9:30",
-  "10:00",
-  "10:30",
-  "11:00",
-  "11:30",
-  "12:00",
-  "12:30",
-];
 
 const navItems = [
-  { key: "schedule", label: "Dashboard" },
+  { key: "calendar", label: "Calendar" },
+  { key: "schedule", label: "Reservations" },
   { key: "onlineOrdering", label: "Online Ordering" },
   { key: "charts", label: "Charts" },
   { key: "history", label: "History" },
@@ -91,6 +79,15 @@ const emptyEditableProduct: EditableProduct = {
   imageUrl: "",
 };
 
+const emptyReservationUnit: ReservationUnit = {
+  id: "",
+  serviceId: "billiard",
+  name: "",
+  description: "",
+  imageUrl: "",
+  active: true,
+};
+
 export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPageProps) {
   const [activeSection, setActiveSection] = useState<typeof navItems[number]["key"]>("schedule");
   const [visibleProductIds, setVisibleProductIdsState] = useState<string[]>([]);
@@ -98,7 +95,20 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [newProduct, setNewProduct] = useState<EditableProduct>(emptyEditableProduct);
   const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
 
-  const { products: productList, addProduct, updateProduct: updateProductBackend, deleteProduct, toggleVisibility, loading } = useProducts({ autoFetch: true });
+  const { products: productList, addProduct, updateProduct: updateProductBackend, toggleVisibility, loading } = useProducts({ autoFetch: true });
+
+  const {
+    units,
+    serviceCategories: unitCategories,
+    addUnit,
+    updateUnit,
+    deleteUnit,
+  } = useReservationUnits();
+  const [selectedUnitCategory, setSelectedUnitCategory] = useState<ReservationServiceCategory["id"]>(unitCategories[0]?.id ?? "billiard");
+  const [unitForm, setUnitForm] = useState<ReservationUnit>(emptyReservationUnit);
+  const [editingUnit, setEditingUnit] = useState<ReservationUnit | null>(null);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [reservationUsers, setReservationUsers] = useState<User[]>([]);
 
   useEffect(() => {
     // Set all products as visible by default when they load from the backend
@@ -138,11 +148,105 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     [productList, categoryFilter],
   );
 
+  useEffect(() => {
+    const loadReservations = async () => {
+      try {
+        const allReservations = await ReservationAPI.getAllReservations();
+        setReservations(allReservations);
+      } catch (error) {
+        console.error('Failed to load reservations:', error);
+      }
+    };
+
+    loadReservations();
+    setReservationUsers(getUsers());
+  }, []);
+
+  const filteredReservations = useMemo(
+    () => reservations.filter((reservation) => reservation.serviceId === selectedUnitCategory),
+    [reservations, selectedUnitCategory],
+  );
+
+  const calendarGroups = useMemo(() => {
+    const groups = new Map<string, { date: string; time: string; reservations: Reservation[] }>();
+
+    filteredReservations.forEach((reservation) => {
+      const date = reservation.date ?? "Unknown date";
+      const time = reservation.time ?? "Unknown time";
+      const key = `${date}||${time}`;
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.reservations.push(reservation);
+      } else {
+        groups.set(key, { date, time, reservations: [reservation] });
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.date === b.date) {
+        return a.time.localeCompare(b.time);
+      }
+      return a.date.localeCompare(b.date);
+    });
+  }, [filteredReservations]);
+
+  const unitCategoryOptions = useMemo(
+    () => unitCategories.map((category) => ({ id: category.id, label: category.label })),
+    [unitCategories]
+  );
+
+  const filteredUnits = useMemo(
+    () => units.filter((unit) => unit.serviceId === selectedUnitCategory),
+    [units, selectedUnitCategory]
+  );
+
   const handleToggleVisibility = (productId: string) => {
     toggleVisibility(productId).catch(err => {
       console.error('Failed to toggle visibility:', err);
       alert('Failed to update product visibility. Please try again.');
     });
+  };
+
+  const handleUnitFormChange = (field: keyof ReservationUnit, value: string | boolean) => {
+    setUnitForm((current) => ({ ...current, [field]: value }));
+  };
+
+  const handleSaveUnit = () => {
+    if (!unitForm.name.trim() || !unitForm.imageUrl.trim()) {
+      alert('Please add a unit name and image before saving.');
+      return;
+    }
+
+    if (editingUnit) {
+      updateUnit(editingUnit.id, {
+        ...unitForm,
+      });
+      setEditingUnit(null);
+    } else {
+      addUnit({
+        ...unitForm,
+        id: `unit-${Date.now()}`,
+      });
+    }
+
+    setUnitForm(emptyReservationUnit);
+  };
+
+  const handleEditUnit = (unit: ReservationUnit) => {
+    setEditingUnit(unit);
+    setUnitForm(unit);
+  };
+
+  const handleCancelUnitEdit = () => {
+    setEditingUnit(null);
+    setUnitForm(emptyReservationUnit);
+  };
+
+  const handleDeleteUnit = (unitId: string) => {
+    if (confirm('Remove this reservation unit?')) {
+      deleteUnit(unitId);
+    }
   };
 
   const handleNewProductChange = (field: keyof EditableProduct, value: string) => {
@@ -268,11 +372,17 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <p className="text-[28px] font-bold uppercase tracking-[0.22em] text-[#1d3e5f]">
-                  {activeSection === "onlineOrdering" ? "Online Ordering" : "Reservation Schedule"}
+                  {activeSection === "onlineOrdering"
+                    ? "Online Ordering"
+                    : activeSection === "calendar"
+                    ? "Calendar Overview"
+                    : "Reservations"}
                 </p>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
                   {activeSection === "onlineOrdering"
                     ? "Publish customer products and manage which items are available for online ordering."
+                    : activeSection === "calendar"
+                    ? "Simple overview of all reserved slots for each date and time."
                     : "Track reserved rooms, guest counts, and booking windows for the function room and experience areas."}
                 </p>
               </div>
@@ -496,86 +606,250 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                   </div>
                 </div>
               </section>
+            ) : activeSection === "calendar" ? (
+              <section className="mt-8 space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                  {calendarGroups.length > 0 ? (
+                    calendarGroups.map(({ date, time, reservations: slotReservations }) => (
+                      <div key={`${date}-${time}`} className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-700">{date}</p>
+                            <p className="mt-1 text-xs text-slate-500">{time}</p>
+                          </div>
+                          <span className="rounded-full bg-[#e7f5f1] px-3 py-1 text-sm font-semibold text-[#166d3b]">
+                            {slotReservations.length} reserved
+                          </span>
+                        </div>
+
+                        <div className="mt-4 space-y-3">
+                          {slotReservations.map((reservation) => (
+                            <div key={reservation.id} className="rounded-[24px] border border-[#dbe2f0] bg-white p-3 shadow-sm">
+                              <p className="text-sm font-semibold text-slate-900">{reservation.userName ?? reservation.userId}</p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {reservation.unitName ?? reservation.unitId ?? "Unknown location"}
+                              </p>
+                              <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
+                                <span>Party: {reservation.partySize ?? "—"}</span>
+                                <span className="rounded-full bg-[#eef2ff] px-2 py-1 text-[#3730a3]">{reservation.status}</span>
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
+                      No reservations found for the calendar overview.
+                    </div>
+                  )}
+                </div>
+              </section>
             ) : (
               <>
                 <div className="mt-6 flex flex-wrap items-center gap-3">
-                  {roomCategories.map((room) => (
-                    <span key={room.label} className={`rounded-full px-4 py-2 text-sm font-semibold ${room.color}`}>
-                      {room.label}
-                    </span>
-                  ))}
+                  {unitCategoryOptions.map((category) => {
+                    const isSelected = category.id === selectedUnitCategory;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setSelectedUnitCategory(category.id)}
+                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          isSelected
+                            ? "bg-[#1f5eff] text-white shadow-sm shadow-[#1f5eff]/20"
+                            : "bg-[#f3f4f6] text-slate-700 hover:bg-[#e5e7eb]"
+                        }`}
+                      >
+                        {category.label}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                <div className="mt-8 overflow-hidden rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-5">
-                  <div className="grid grid-cols-8 gap-2 text-[13px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                    {times.map((time) => (
-                      <div key={time} className="rounded-[18px] bg-[#faf7f3] px-3 py-4 text-center">
-                        {time}
+                <div className="mt-8 grid gap-8 xl:grid-cols-[1.1fr_0.9fr]">
+                  <div className="space-y-6">
+                    <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-700">Reservation units</p>
+                          <p className="mt-2 text-sm text-slate-600">
+                            Manage available units for the selected experience category.
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-[#fff1f0] px-4 py-2 text-sm font-semibold text-[#9c2b30]">
+                          {filteredUnits.length} units
+                        </span>
                       </div>
-                    ))}
+
+                      <div className="mt-6 grid gap-4">
+                        {filteredUnits.map((unit) => (
+                          <div key={unit.id} className="grid gap-4 rounded-[28px] border border-slate-200 bg-white p-4 lg:grid-cols-[1fr_auto]">
+                            <div className="flex items-center gap-4">
+                              <img src={unit.imageUrl} alt={unit.name} className="h-20 w-28 rounded-3xl object-cover" />
+                              <div>
+                                <p className="text-base font-semibold text-slate-900">{unit.name}</p>
+                                <p className="mt-1 text-sm text-slate-500">{unit.description}</p>
+                                <span className={`mt-3 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
+                                  unit.active ? "bg-[#e6f7ef] text-[#166d3b]" : "bg-[#fff1f0] text-[#9c2b2b]"
+                                }`}>
+                                  {unit.active ? "Active" : "Inactive"}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-3 justify-end">
+                              <button
+                                type="button"
+                                onClick={() => handleEditUnit(unit)}
+                                className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteUnit(unit.id)}
+                                className="rounded-full border border-[#f3d4d0] bg-[#fff1f0] px-4 py-2 text-sm font-semibold text-[#ad2f2f] hover:bg-[#f9d3d0]"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                      <p className="text-sm font-semibold text-slate-700">Add / edit unit</p>
+                      <p className="mt-2 text-sm text-slate-600">
+                        Update descriptions, pictures, and availability for this service category.
+                      </p>
+
+                      <div className="mt-6 grid gap-4">
+                        <label className="block text-sm font-semibold text-slate-700">
+                          Unit name
+                          <input
+                            value={unitForm.name}
+                            onChange={(event) => handleUnitFormChange("name", event.target.value)}
+                            className="mt-2 w-full rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                            placeholder="Table 5, Room 2, Court B"
+                          />
+                        </label>
+                        <label className="block text-sm font-semibold text-slate-700">
+                          Description
+                          <textarea
+                            value={unitForm.description}
+                            onChange={(event) => handleUnitFormChange("description", event.target.value)}
+                            rows={3}
+                            className="mt-2 w-full rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                            placeholder="Describe the unit and its perks"
+                          />
+                        </label>
+                        <label className="block text-sm font-semibold text-slate-700">
+                          Category
+                          <select
+                            value={unitForm.serviceId}
+                            onChange={(event) => handleUnitFormChange("serviceId", event.target.value)}
+                            className="mt-2 w-full rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                          >
+                            {unitCategoryOptions.map((category) => (
+                              <option key={category.id} value={category.id}>
+                                {category.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="block text-sm font-semibold text-slate-700">
+                          Image
+                          <select
+                            value={unitForm.imageUrl}
+                            onChange={(event) => handleUnitFormChange("imageUrl", event.target.value)}
+                            className="mt-2 w-full rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                          >
+                            <option value="">Select an image...</option>
+                            {availableImages.map((image) => (
+                              <option key={image.url} value={image.url}>
+                                {image.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-3 text-sm font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            checked={unitForm.active}
+                            onChange={(event) => handleUnitFormChange("active", event.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300 text-[#1f5eff]"
+                          />
+                          Active unit
+                        </label>
+
+                        <div className="flex flex-wrap gap-3">
+                          <button
+                            type="button"
+                            onClick={handleSaveUnit}
+                            className="rounded-[24px] bg-[#1f5eff] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#1848cb]"
+                          >
+                            {editingUnit ? "Save unit" : "Add unit"}
+                          </button>
+                          {editingUnit && (
+                            <button
+                              type="button"
+                              onClick={handleCancelUnitEdit}
+                              className="rounded-[24px] border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 hover:border-slate-400"
+                            >
+                              Cancel
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="mt-6 grid grid-cols-12 gap-3 text-sm text-slate-700">
-                    <div className="col-span-3 rounded-[32px] bg-[#ffe6e0] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#b33c2f]">Alice</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 2</p>
-                    </div>
-                    <div className="col-span-2 rounded-[32px] bg-[#e8f1ff] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#2555a8]">Bella</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 4</p>
-                    </div>
-                    <div className="col-span-2 rounded-[32px] bg-[#fde9d8] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#8d4e1b]">Anna</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 2</p>
-                    </div>
-                    <div className="col-span-3 rounded-[32px] bg-[#e6f4ea] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#2f6740]">Corbin</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 1</p>
-                    </div>
-                    <div className="col-span-2 rounded-[32px] bg-[#fff1f8] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#a83477]">Elisa</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 3</p>
-                    </div>
-                    <div className="col-span-2 rounded-[32px] bg-[#f5f7ff] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#3b5aa0]">Rory</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 3</p>
-                    </div>
-                    <div className="col-span-3 rounded-[32px] bg-[#fff6e4] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#ad620d]">David</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 3</p>
-                    </div>
-                    <div className="col-span-3 rounded-[32px] bg-[#f4e7ff] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#593d8b]">Mary</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 3</p>
-                    </div>
-                    <div className="col-span-2 rounded-[32px] bg-[#eaf7ed] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#2f6e39]">Zane</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 2</p>
-                    </div>
-                    <div className="col-span-2 rounded-[32px] bg-[#fef2f8] p-4 shadow-sm">
-                      <p className="text-base font-semibold text-[#a02d5f]">Elsa</p>
-                      <p className="mt-2 text-sm text-slate-600">People: 2</p>
-                    </div>
-                  </div>
-                </div>
+                  <div className="space-y-6">
+                    <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-700">Reservations</p>
+                          <p className="mt-2 text-sm text-slate-600">
+                            Track reserved slots and the user who booked them.
+                          </p>
+                        </div>
+                        <div className="rounded-full bg-[#eef5ff] px-4 py-2 text-sm font-semibold text-[#2a57a0]">
+                          {filteredReservations.length} bookings
+                        </div>
+                      </div>
 
-                <div className="mt-8 rounded-[32px] border border-[#e9e2da] bg-[#fff9f6] p-5">
-                  <p className="text-sm font-semibold text-slate-700">Legend</p>
-                  <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full bg-[#ffb87a]" /> Pending
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full bg-[#7dd1ff]" /> Reserved
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full bg-[#ffed93]" /> Waiting payment
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full bg-[#b6e8ab]" /> Cleared
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="h-3 w-3 rounded-full bg-[#f8c6d2]" /> Cancelled
+                      <div className="mt-6 overflow-x-auto">
+                        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                          <thead className="bg-[#f8f6f3] text-slate-500">
+                            <tr>
+                              <th className="px-4 py-3 font-semibold">Date</th>
+                              <th className="px-4 py-3 font-semibold">Time</th>
+                              <th className="px-4 py-3 font-semibold">Unit</th>
+                              <th className="px-4 py-3 font-semibold">User</th>
+                              <th className="px-4 py-3 font-semibold">Status</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200 bg-white">
+                            {filteredReservations.map((reservation) => (
+                              <tr key={reservation.id}>
+                                <td className="px-4 py-4 text-slate-700">{reservation.date}</td>
+                                <td className="px-4 py-4 text-slate-700">{reservation.time}</td>
+                                <td className="px-4 py-4 text-slate-700">{reservation.unitName ?? reservation.unitId ?? "—"}</td>
+                                <td className="px-4 py-4 text-slate-700">
+                                  <div className="font-semibold text-slate-900">
+                                    {reservation.userName ?? reservationUsers.find((user) => user.id === reservation.userId)?.name ?? reservation.userId}
+                                  </div>
+                                  <div className="text-xs text-slate-500">
+                                    {reservationUsers.find((user) => user.id === reservation.userId)?.email ?? reservation.userId}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4 text-slate-700">{reservation.status}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </div>

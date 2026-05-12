@@ -131,12 +131,12 @@ export default function App() {
         currentPage === "ordering" ? (
           <OrderingPage onNavigateToReservation={navigateToReservation} />
         ) : (
-          <ReservationPage onNavigateBack={navigateToOrdering} />
+          <ReservationPage onNavigateBack={navigateToOrdering} user={authUser} />
         )
       ) : currentPage === "ordering" ? (
         <DesktopOrderingPage onNavigateToReservation={navigateToReservation} onLogout={handleLogout} user={authUser} />
       ) : (
-        <ReservationPage onNavigateBack={navigateToOrdering} />
+        <ReservationPage onNavigateBack={navigateToOrdering} user={authUser} />
       )}
     </div>
   );

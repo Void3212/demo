@@ -43,6 +43,9 @@ export async function initializeDatabase() {
       date TEXT NOT NULL,
       time TEXT NOT NULL,
       partySize INTEGER NOT NULL CHECK(partySize > 0),
+      unitId TEXT,
+      unitName TEXT,
+      serviceId TEXT,
       specialRequests TEXT,
       status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'confirmed', 'cancelled', 'completed')),
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -50,6 +53,18 @@ export async function initializeDatabase() {
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  const reservationInfo = await db.all<{ name: string }>(`PRAGMA table_info(reservations)`);
+  const reservationColumns = reservationInfo.map((column) => column.name);
+  if (!reservationColumns.includes('unitId')) {
+    await db.exec(`ALTER TABLE reservations ADD COLUMN unitId TEXT`);
+  }
+  if (!reservationColumns.includes('unitName')) {
+    await db.exec(`ALTER TABLE reservations ADD COLUMN unitName TEXT`);
+  }
+  if (!reservationColumns.includes('serviceId')) {
+    await db.exec(`ALTER TABLE reservations ADD COLUMN serviceId TEXT`);
+  }
 
   // Create orders table
   await db.exec(`

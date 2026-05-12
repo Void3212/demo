@@ -4,9 +4,13 @@ import sqlite3 from 'sqlite3';
 export interface Reservation {
   id: string;
   userId: string;
+  userName?: string;
   date: string;
   time: string;
   partySize: number;
+  unitId?: string;
+  unitName?: string;
+  serviceId?: string;
   specialRequests?: string;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
   createdAt: string;
@@ -25,19 +29,41 @@ export interface User {
 export class ReservationService {
   constructor(private db: Database<sqlite3.Database, sqlite3.Statement>) {}
 
+  private async ensureUserExists(userId: string): Promise<void> {
+    const existing = await this.db.get<{ id: string }>(
+      'SELECT id FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (!existing) {
+      const now = new Date().toISOString();
+      const email = `${userId}@local.chillingan`; // keep unique for placeholder users
+      await this.db.run(
+        `INSERT INTO users (id, email, password, name, role, createdAt, updatedAt)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [userId, email, 'local-user', 'Guest', 'user', now, now]
+      );
+    }
+  }
+
   async createReservation(reservation: Omit<Reservation, 'id' | 'createdAt' | 'updatedAt'>): Promise<Reservation> {
+    await this.ensureUserExists(reservation.userId);
+
     const id = `res_${Date.now()}`;
     const now = new Date().toISOString();
 
     await this.db.run(
-      `INSERT INTO reservations (id, userId, date, time, partySize, specialRequests, status, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO reservations (id, userId, date, time, partySize, unitId, unitName, serviceId, specialRequests, status, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         reservation.userId,
         reservation.date,
         reservation.time,
         reservation.partySize,
+        reservation.unitId || null,
+        reservation.unitName || null,
+        reservation.serviceId || null,
         reservation.specialRequests || null,
         'pending',
         now,
@@ -63,14 +89,21 @@ export class ReservationService {
 
   async getUserReservations(userId: string): Promise<Reservation[]> {
     return this.db.all<Reservation[]>(
-      'SELECT * FROM reservations WHERE userId = ? ORDER BY date DESC, time DESC',
+      `SELECT reservations.*, users.name AS userName
+       FROM reservations
+       LEFT JOIN users ON reservations.userId = users.id
+       WHERE userId = ?
+       ORDER BY date DESC, time DESC`,
       [userId]
     );
   }
 
   async getAllReservations(): Promise<Reservation[]> {
     return this.db.all<Reservation[]>(
-      'SELECT * FROM reservations ORDER BY date DESC, time DESC'
+      `SELECT reservations.*, users.name AS userName
+       FROM reservations
+       LEFT JOIN users ON reservations.userId = users.id
+       ORDER BY date DESC, time DESC`
     );
   }
 

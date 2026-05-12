@@ -74,7 +74,13 @@ export function getCurrentUser(): User | null {
 
 export function setCurrentUser(user: User) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(user));
+
+  const authUser = {
+    ...user,
+    profileImage: null,
+  };
+
+  window.localStorage.setItem(AUTH_USER_STORAGE_KEY, JSON.stringify(authUser));
 }
 
 export function logoutUser() {
