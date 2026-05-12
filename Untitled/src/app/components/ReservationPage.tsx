@@ -36,6 +36,7 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<string>("visa");
   const [allReservations, setAllReservations] = useState<Reservation[]>([]);
+  const [userReservations, setUserReservations] = useState<Reservation[]>([]);
   const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
   const [adminSettings, setAdminSettings] = useState<AdminSettings>(loadAdminSettings());
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -67,7 +68,12 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
     () =>
       new Map(
         allReservations
-          .filter((reservation) => reservation.date === selectedDate && reservation.unitId === selectedItem)
+          .filter(
+            (reservation) =>
+              reservation.status !== 'cancelled' &&
+              reservation.date === selectedDate &&
+              reservation.unitId === selectedItem,
+          )
           .map((reservation) => [reservation.time, reservation] as [string, Reservation])
       ),
     [allReservations, selectedDate, selectedItem]
@@ -83,6 +89,16 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
         setAllReservations(data);
       } catch (error) {
         console.error("Failed to load reservations:", error);
+      }
+    };
+
+    const loadUserReservations = async () => {
+      try {
+        const data = await ReservationAPI.getReservations(user.id);
+        setUserReservations(data);
+      } catch (error) {
+        console.error("Failed to load user reservations:", error);
+        setUserReservations([]);
       }
     };
 
@@ -106,10 +122,12 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
     }
 
     loadReservations();
+    loadUserReservations();
     loadWalkIns();
 
     const refresh = () => {
       loadReservations();
+      loadUserReservations();
       loadWalkIns();
     };
 
@@ -178,6 +196,7 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       });
 
       setAllReservations((prev) => [reservation, ...prev]);
+      setUserReservations((prev) => [reservation, ...prev]);
 
       if (adminSettings.emailNotifications) {
         console.info("Email notification: A new reservation has been created.");
@@ -187,6 +206,20 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       setReservationError(message);
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleCancelUserReservation = async (reservationId: string) => {
+    const confirmCancel = window.confirm('Are you sure you want to cancel this reservation?');
+    if (!confirmCancel) return;
+
+    try {
+      const cancelledReservation = await ReservationAPI.cancelReservation(reservationId);
+      setUserReservations((prev) => prev.map((reservation) => reservation.id === reservationId ? cancelledReservation : reservation));
+      setAllReservations((prev) => prev.map((reservation) => reservation.id === reservationId ? cancelledReservation : reservation));
+    } catch (error) {
+      console.error('Failed to cancel reservation:', error);
+      setReservationError('Failed to cancel reservation. Please try again.');
     }
   };
 
@@ -475,6 +508,53 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
           </div>
         </aside>
       </div>
+
+      <section className="mx-auto mt-8 max-w-[1400px] rounded-[40px] border border-slate-200 bg-white p-6 shadow-[0_30px_80px_rgba(0,0,0,0.08)] lg:p-8">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm uppercase tracking-[0.35em] text-[#d94b1f]">Your bookings</p>
+            <h2 className="mt-2 text-3xl font-semibold text-slate-900">My upcoming reservations</h2>
+          </div>
+          <span className="rounded-full bg-[#eef2ff] px-4 py-2 text-sm font-semibold text-[#1d4ed8]">
+            {userReservations.length} bookings
+          </span>
+        </div>
+
+        <div className="mt-6 space-y-4">
+          {userReservations.length > 0 ? (
+            userReservations.map((reservation) => (
+              <div key={reservation.id} className={`rounded-[32px] border p-5 ${reservation.status === 'cancelled' ? 'border-[#fecaca] bg-[#fff1f2]' : 'border-[#dbe2f0] bg-white'}`}>
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-slate-900">{serviceInfo?.label ?? reservation.serviceId}</p>
+                    <p className="mt-2 text-sm text-slate-600">{reservation.date} · {reservation.time} · {reservation.unitName ?? reservation.unitId ?? 'Unit'}</p>
+                    <p className="mt-2 text-sm text-slate-600">Party size: {reservation.partySize}</p>
+                    {reservation.specialRequests && <p className="mt-2 text-sm text-slate-500">Notes: {reservation.specialRequests}</p>}
+                  </div>
+                  <div className="flex flex-col items-start gap-3 sm:items-end">
+                    <span className={`rounded-full px-3 py-2 text-xs font-semibold ${reservation.status === 'cancelled' ? 'bg-[#fee2e2] text-[#991b1b]' : 'bg-[#eef2ff] text-[#3730a3]'}`}>
+                      {reservation.status}
+                    </span>
+                    {reservation.status !== 'cancelled' ? (
+                      <button
+                        type="button"
+                        onClick={() => handleCancelUserReservation(reservation.id)}
+                        className="rounded-full bg-[#fecaca] px-4 py-2 text-sm font-semibold text-[#9f2a2c] hover:bg-[#fca5a5]"
+                      >
+                        Cancel reservation
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-[32px] border border-[#ede2f0] bg-[#fff7f2] p-6 text-slate-600">
+              No active reservations yet. Select a slot and reserve to see it here.
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

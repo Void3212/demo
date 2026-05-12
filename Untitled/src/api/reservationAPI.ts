@@ -93,6 +93,10 @@ export class ReservationAPI {
     return response.json();
   }
 
+  static async cancelReservation(id: string): Promise<Reservation> {
+    return this.updateReservation(id, { status: 'cancelled' });
+  }
+
   static async deleteReservation(id: string): Promise<void> {
     const response = await fetch(`${API_URL}/reservations/${id}`, {
       method: 'DELETE'

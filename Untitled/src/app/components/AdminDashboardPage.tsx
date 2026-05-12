@@ -121,6 +121,22 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     notes: '',
   });
 
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  const currentSlot = useMemo(
+    () => `${currentTime.getHours().toString().padStart(2, '0')}:00`,
+    [currentTime],
+  );
+  const currentDate = useMemo(
+    () => currentTime.toISOString().split('T')[0],
+    [currentTime],
+  );
+  const isTodaySelected = newWalkIn.date === currentDate;
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => window.clearInterval(intervalId);
+  }, []);
+
   const { products: productList, addProduct, updateProduct: updateProductBackend, toggleVisibility, loading } = useProducts({ autoFetch: true });
 
   const timeSlots = useMemo(
@@ -151,6 +167,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     }
 
     const reservationConflict = reservations.some((reservation) => {
+      if (reservation.status === 'cancelled') return false;
       if (reservation.date !== date || reservation.unitId !== unitId) return false;
       const reservationStart = parseHour(reservation.time);
       const reservationEnd = reservationStart + 1;
@@ -180,6 +197,32 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     const hour = parseHour(slot);
     const nextHour = hour + 1;
     return nextHour < 24 ? `${nextHour.toString().padStart(2, "0")}:00` : slot;
+  };
+
+  const getReservationBadgeStyles = (status: Reservation['status']) => {
+    switch (status) {
+      case 'cancelled':
+        return 'bg-[#fee2e2] text-[#991b1b]';
+      case 'confirmed':
+        return 'bg-[#dcfce7] text-[#166534]';
+      case 'completed':
+        return 'bg-[#e0f2fe] text-[#035388]';
+      default:
+        return 'bg-[#eef2ff] text-[#3730a3]';
+    }
+  };
+
+  const getReservationCardClasses = (status: Reservation['status']) =>
+    status === 'cancelled'
+      ? 'rounded-[24px] border border-[#fecaca] bg-[#fff1f2] p-3 shadow-sm'
+      : 'rounded-[24px] border border-[#dbe2f0] bg-white p-3 shadow-sm';
+
+  const isPastCalendarSlot = (date: string, time: string) => {
+    if (!date || !time) return false;
+    const compareDate = currentDate;
+    if (date < compareDate) return true;
+    if (date > compareDate) return false;
+    return parseHour(time) < currentTime.getHours();
   };
 
   const isSlotBlocked = (slot: string) => {
@@ -439,14 +482,45 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   };
 
   const handleDeleteWalkIn = async (id: string) => {
-    if (!confirm('Delete this walk-in record?')) return;
+    if (!confirm('Cancel this walk-in record?')) return;
 
     try {
       await ReservationAPI.deleteWalkin(id);
       setWalkIns((prev) => prev.filter((w) => w.id !== id));
     } catch (error) {
       console.error('Failed to delete walk-in:', error);
-      alert('Failed to delete walk-in. Please try again.');
+      alert('Failed to cancel walk-in. Please try again.');
+    }
+  };
+
+  const handleCancelReservation = async (reservationId: string) => {
+    if (!confirm('Cancel this reservation?')) return;
+
+    try {
+      const cancelledReservation = await ReservationAPI.cancelReservation(reservationId);
+      setReservations((prev) => prev.map((reservation) => reservation.id === reservationId ? cancelledReservation : reservation));
+    } catch (error) {
+      console.error('Failed to cancel reservation:', error);
+      alert('Failed to cancel reservation. Please try again.');
+    }
+  };
+
+  const handleConfirmDone = async (
+    entry: { kind: 'reservation'; item: Reservation } | { kind: 'walkin'; item: WalkIn }
+  ) => {
+    if (!confirm('Mark this booking as done and remove it from the calendar?')) return;
+
+    try {
+      if (entry.kind === 'walkin') {
+        await ReservationAPI.deleteWalkin(entry.item.id);
+        setWalkIns((prev) => prev.filter((walkin) => walkin.id !== entry.item.id));
+      } else {
+        await ReservationAPI.deleteReservation(entry.item.id);
+        setReservations((prev) => prev.filter((reservation) => reservation.id !== entry.item.id));
+      }
+    } catch (error) {
+      console.error('Failed to remove completed booking:', error);
+      alert('Failed to remove this record. Please try again.');
     }
   };
 
@@ -456,18 +530,37 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   );
 
   const calendarGroups = useMemo(() => {
-    const groups = new Map<string, { date: string; time: string; reservations: Reservation[] }>();
+    type CalendarEntry =
+      | { kind: 'reservation'; item: Reservation }
+      | { kind: 'walkin'; item: WalkIn };
+
+    const groups = new Map<string, { date: string; time: string; entries: CalendarEntry[] }>();
 
     reservations.forEach((reservation) => {
       const date = reservation.date ?? "Unknown date";
       const time = reservation.time ?? "Unknown time";
       const key = `${date}||${time}`;
       const existing = groups.get(key);
+      const entry: CalendarEntry = { kind: 'reservation', item: reservation };
 
       if (existing) {
-        existing.reservations.push(reservation);
+        existing.entries.push(entry);
       } else {
-        groups.set(key, { date, time, reservations: [reservation] });
+        groups.set(key, { date, time, entries: [entry] });
+      }
+    });
+
+    walkIns.forEach((walkin) => {
+      const date = walkin.date ?? "Unknown date";
+      const time = walkin.startTime ?? "Unknown time";
+      const key = `${date}||${time}`;
+      const existing = groups.get(key);
+      const entry: CalendarEntry = { kind: 'walkin', item: walkin };
+
+      if (existing) {
+        existing.entries.push(entry);
+      } else {
+        groups.set(key, { date, time, entries: [entry] });
       }
     });
 
@@ -477,7 +570,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       }
       return a.date.localeCompare(b.date);
     });
-  }, [reservations]);
+  }, [reservations, walkIns]);
 
   const unitCategoryOptions = useMemo(
     () => unitCategories.map((category) => ({ id: category.id, label: category.label })),
@@ -711,6 +804,9 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                 <div className="rounded-[24px] bg-[#f5f7ff] px-4 py-3 text-sm font-semibold text-[#2b54a3]">
                   Mon 05/12
                 </div>
+                <div className="rounded-[24px] bg-[#e8f1ff] px-4 py-3 text-sm font-semibold text-[#1d4ed8]">
+                  Now {currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+                </div>
                 <button
                   type="button"
                   onClick={() => setActiveSection("walkins")}
@@ -935,37 +1031,161 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
               <section className="mt-8 space-y-6">
                 <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                   {calendarGroups.length > 0 ? (
-                    calendarGroups.map(({ date, time, reservations: slotReservations }) => (
-                      <div key={`${date}-${time}`} className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-5">
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-700">{date}</p>
-                            <p className="mt-1 text-xs text-slate-500">{time}</p>
-                          </div>
-                          <span className="rounded-full bg-[#e7f5f1] px-3 py-1 text-sm font-semibold text-[#166d3b]">
-                            {slotReservations.length} reserved
-                          </span>
-                        </div>
-
-                        <div className="mt-4 space-y-3">
-                          {slotReservations.map((reservation) => (
-                            <div key={reservation.id} className="rounded-[24px] border border-[#dbe2f0] bg-white p-3 shadow-sm">
-                              <p className="text-sm font-semibold text-slate-900">{reservation.userName ?? reservation.userId}</p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {reservation.unitName ?? reservation.unitId ?? "Unknown location"}
-                              </p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {serviceLabelMap.get(reservation.serviceId ?? "") ?? reservation.serviceId ?? "Unknown service"}
-                              </p>
-                              <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                                <span>Party: {reservation.partySize ?? "—"}</span>
-                                <span className="rounded-full bg-[#eef2ff] px-2 py-1 text-[#3730a3]">{reservation.status}</span>
-                              </p>
+                    calendarGroups.map(({ date, time, entries }) => {
+                      const highlightCurrent = date === currentDate && time === currentSlot;
+                      const pastGroup = isPastCalendarSlot(date, time);
+                      return (
+                        <div
+                          key={`${date}-${time}`}
+                          className={`rounded-[32px] border p-5 ${
+                            highlightCurrent
+                              ? "border-[#2563eb] bg-[#dbeafe] shadow-[0_0_0_6px_rgba(37,99,235,0.18)]"
+                              : pastGroup
+                              ? "border-slate-300 bg-slate-100"
+                              : "border-[#ede2d0] bg-[#f9fafb]"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-700">{date}</p>
+                              <p className="mt-1 text-xs text-slate-500">{time}</p>
                             </div>
-                          ))}
+                            <div className="flex items-center gap-2">
+                              {highlightCurrent && (
+                                <span className="rounded-full bg-[#2563eb] px-3 py-1 text-xs font-semibold text-white shadow-sm shadow-[#2563eb]/30">
+                                  Now
+                                </span>
+                              )}
+                              {pastGroup && !highlightCurrent && (
+                                <span className="rounded-full bg-slate-800/10 px-3 py-1 text-xs font-semibold text-slate-700">
+                                  Completed
+                                </span>
+                              )}
+                              <span className="rounded-full bg-[#e7f5f1] px-3 py-1 text-sm font-semibold text-[#166d3b]">
+                                {entries.length} entries
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 space-y-3">
+                            {entries.map((entry) => {
+                              if (entry.kind === 'walkin') {
+                                const walkin = entry.item;
+                                return (
+                                  <div
+                                    key={walkin.id}
+                                    className={
+                                      pastGroup
+                                        ? 'rounded-[24px] border border-slate-300 bg-slate-100 p-3 shadow-sm'
+                                        : 'rounded-[24px] border border-[#facc15] bg-[#fffbeb] p-3 shadow-sm'
+                                    }
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-semibold text-slate-900">{walkin.customerName}</p>
+                                        <p className="mt-1 text-xs text-slate-500">{walkin.unitName ?? walkin.unitId ?? 'Unknown location'}</p>
+                                        <p className="mt-1 text-xs text-slate-500">{walkin.serviceName}</p>
+                                      </div>
+                                      <span className="rounded-full bg-[#fef3c7] px-2 py-1 text-xs font-semibold text-[#92400e]">Walk-in</span>
+                                    </div>
+                                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                                      <span>{walkin.startTime} - {walkin.endTime}</span>
+                                      <span>Paid ₱{walkin.paymentAmount}</span>
+                                    </div>
+                                    <div className="mt-4 flex flex-wrap gap-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteWalkIn(walkin.id)}
+                                        className="rounded-full bg-[#fecaca] px-3 py-2 text-xs font-semibold text-[#9f2a2c] hover:bg-[#fca5a5]"
+                                      >
+                                        Cancel walk-in
+                                      </button>
+                                      {pastGroup && (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleConfirmDone(entry)}
+                                          className="rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900"
+                                        >
+                                          Confirmed done
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              }
+
+                              const reservation = entry.item;
+                              return (
+                                <div
+                                  key={reservation.id}
+                                  className={
+                                    pastGroup && reservation.status !== 'cancelled'
+                                      ? 'rounded-[24px] border border-slate-300 bg-slate-100 p-3 shadow-sm'
+                                      : getReservationCardClasses(reservation.status)
+                                  }
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-semibold text-slate-900">{reservation.userName ?? reservation.userId}</p>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {reservation.unitName ?? reservation.unitId ?? 'Unknown location'}
+                                      </p>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {serviceLabelMap.get(reservation.serviceId ?? '') ?? reservation.serviceId ?? 'Unknown service'}
+                                      </p>
+                                      {reservation.specialRequests && (
+                                        <p className="mt-2 text-xs text-slate-500">"{reservation.specialRequests}"</p>
+                                      )}
+                                    </div>
+                                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${getReservationBadgeStyles(reservation.status)}`}>
+                                      {reservation.status}
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                                    <span>Party: {reservation.partySize ?? '—'}</span>
+                                    <span>Created: {new Date(reservation.createdAt).toLocaleString()}</span>
+                                  </div>
+                                  <div className="mt-4 flex flex-wrap gap-2">
+                                    {reservation.status !== 'cancelled' ? (
+                                      pastGroup ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleConfirmDone(entry)}
+                                          className="rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900"
+                                        >
+                                          Confirmed done
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => handleCancelReservation(reservation.id)}
+                                          className="rounded-full bg-[#fecaca] px-3 py-2 text-xs font-semibold text-[#9f2a2c] hover:bg-[#fca5a5]"
+                                        >
+                                          Cancel reservation
+                                        </button>
+                                      )
+                                    ) : (
+                                      <div className="flex items-center gap-2">
+                                        <span className="rounded-full bg-[#fee2e2] px-3 py-2 text-xs font-semibold text-[#991b1b]">
+                                          Cancelled
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleConfirmDone(entry)}
+                                          className="rounded-full bg-slate-800 px-3 py-2 text-xs font-semibold text-white hover:bg-slate-900"
+                                        >
+                                          Confirmed done
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
                       No reservations found for the calendar overview.
@@ -1039,6 +1259,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                           const selected = isSlotInSelectedRange(slot);
                           const isStart = slot === newWalkIn.startTime;
                           const isEnd = slot === newWalkIn.endTime && parseHour(slot) > parseHour(newWalkIn.startTime);
+                          const isCurrentSlot = isTodaySelected && slot === currentSlot;
                           return (
                             <button
                               key={slot}
@@ -1047,7 +1268,9 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                               disabled={!newWalkIn.unitId || blocked}
                               className={
                                 `rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition focus:outline-none ` +
-                                (blocked
+                                (isCurrentSlot
+                                  ? "border-[#1d4ed8] bg-[#c7d2fe] text-[#1f3d8f] shadow-[0_0_0_3px_rgba(59,130,246,0.18)]"
+                                  : blocked
                                   ? "border-red-200 bg-red-50 text-red-700"
                                   : selected
                                   ? "border-[#1f5eff] bg-[#e8f0ff] text-[#1f3d8f]"
@@ -1056,6 +1279,9 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <span>{slot}</span>
+                                {isCurrentSlot && (
+                                  <span className="rounded-full bg-[#1d4ed8] px-2 py-0.5 text-[11px] font-bold text-white shadow-sm shadow-[#1d4ed8]/40">Now</span>
+                                )}
                                 {isStart && <span className="rounded-full bg-[#dbeafe] px-2 py-0.5 text-[11px] font-bold text-[#1d4ed8]">Start</span>}
                                 {isEnd && <span className="rounded-full bg-[#d1fae5] px-2 py-0.5 text-[11px] font-bold text-[#065f46]">End</span>}
                               </div>
