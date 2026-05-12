@@ -563,7 +563,7 @@ const MOBILE_CARD_POSITIONS = [
   { left: 226, top: 611 },
 ];
 
-function ProductCard({ product, left, top }: { product: Product; left: number; top: number }) {
+function ProductCard({ product, left, top, onAddToCart }: { product: Product; left: number; top: number; onAddToCart: (product: Product) => void }) {
   return (
     <div className="absolute w-[185px]" style={{ left, top }}>
       <div className="absolute inset-0 rounded-[20px] bg-white shadow-[0px_6px_17px_0px_rgba(0,0,0,0.13)]" />
@@ -577,7 +577,7 @@ function ProductCard({ product, left, top }: { product: Product; left: number; t
       </div>
       <button
         type="button"
-        onClick={() => alert(`Added ${product.name} to cart`)}
+        onClick={() => onAddToCart(product)}
         className="absolute left-[14px] right-[14px] bottom-[14px] h-[34px] rounded-[16px] bg-[#ff7a05] text-[13px] font-semibold text-white"
       >
         Add to cart
@@ -641,6 +641,7 @@ function Home({ searchQuery, setSearchQuery, selectedCategory, setSelectedCatego
               product={product}
               left={MOBILE_CARD_POSITIONS[index].left}
               top={MOBILE_CARD_POSITIONS[index].top}
+              onAddToCart={onAddToCart}
             />
           ))}
       </div>
@@ -689,7 +690,11 @@ function Home({ searchQuery, setSearchQuery, selectedCategory, setSelectedCatego
   );
 }
 
-export default function MobileOrdering() {
+interface MobileOrderingProps {
+  onAddToCart: (product: Product) => void;
+}
+
+export default function MobileOrdering({ onAddToCart }: MobileOrderingProps) {
   const [selectedCategory, setSelectedCategory] = useState('Sizzling Meal');
   const [searchQuery, setSearchQuery] = useState('');
   const { products, loading } = useProducts({ autoFetch: true });

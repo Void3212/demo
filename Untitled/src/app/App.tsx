@@ -6,6 +6,7 @@ import LoginPage from "./components/LoginPage";
 import RegisterPage from "./components/RegisterPage";
 import AdminDashboardPage from "./components/AdminDashboardPage";
 import DataMigrationPage from "./components/DataMigrationPage";
+import { CartProvider } from "./components/CartContext";
 import { getCurrentUser, logoutUser, type User } from "./data/users";
 import { checkLocalStorageData } from "../utils/migration";
 
@@ -74,14 +75,17 @@ export default function App() {
 
   if (authUser.role === "admin") {
     return (
-      <div className="w-screen min-h-screen bg-gray-100 overflow-auto">
-        <AdminDashboardPage user={authUser} onLogout={handleLogout} />
-      </div>
+      <CartProvider>
+        <div className="w-screen min-h-screen bg-gray-100 overflow-auto">
+          <AdminDashboardPage user={authUser} onLogout={handleLogout} />
+        </div>
+      </CartProvider>
     );
   }
 
   return (
-    <div className="w-screen min-h-screen bg-gray-100 overflow-auto">
+    <CartProvider>
+      <div className="w-screen min-h-screen bg-gray-100 overflow-auto">
       {/* Migration Banner - Always show if user has data to migrate */}
       {authUser && hasDataToMigrate && currentPage !== "migration" && (
         <div className="bg-yellow-100 border-b-2 border-yellow-400 p-4">
@@ -129,7 +133,7 @@ export default function App() {
         <DataMigrationPage />
       ) : isMobile ? (
         currentPage === "ordering" ? (
-          <OrderingPage onNavigateToReservation={navigateToReservation} />
+          <OrderingPage onNavigateToReservation={navigateToReservation} user={authUser} />
         ) : (
           <ReservationPage onNavigateBack={navigateToOrdering} user={authUser} />
         )
@@ -138,6 +142,7 @@ export default function App() {
       ) : (
         <ReservationPage onNavigateBack={navigateToOrdering} user={authUser} />
       )}
-    </div>
+      </div>
+    </CartProvider>
   );
 }

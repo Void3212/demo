@@ -1,5 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import AdminSide from "../../imports/AdminSide";
+import { OrderAPI } from "../../api/orderAPI";
+import OrderTracking from "./OrderTracking";
+import { createOrder, type Order, type OrderItem } from "../data/orders";
 import { type Product } from "../data/products";
 import { type User } from "../data/users";
 
@@ -22,6 +25,10 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [scale, setScale] = useState(1);
+  const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,6 +42,40 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
     window.addEventListener("resize", updateScale);
     return () => window.removeEventListener("resize", updateScale);
   }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setRecentOrders([]);
+      return;
+    }
+
+    void fetchUserOrders();
+    const interval = window.setInterval(() => {
+      void fetchUserOrders();
+    }, 5000);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [user]);
+
+  const fetchUserOrders = async () => {
+    if (!user) return;
+    setOrdersLoading(true);
+
+    try {
+      const userOrders = await OrderAPI.getOrdersByUser(user.id);
+      setRecentOrders(
+        userOrders.sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        ),
+      );
+    } catch (err) {
+      setCheckoutMessage(err instanceof Error ? err.message : "Unable to fetch your order status right now.");
+    } finally {
+      setOrdersLoading(false);
+    }
+  };
 
   const handleReservationClick = () => {
     onNavigateToReservation();
@@ -67,6 +108,45 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
         )
         .filter((item) => item.quantity > 0),
     );
+  };
+
+  const handleCheckout = async () => {
+    if (cartItems.length === 0 || !user?.address) return;
+
+    setIsSubmitting(true);
+    setCheckoutMessage(null);
+
+    try {
+      const items: OrderItem[] = cartItems.map((item) => ({
+        product: {
+          id: item.product.id,
+          name: item.product.name,
+          description: item.product.description,
+          price: item.product.price,
+          category: item.product.category,
+          imageUrl: item.product.imageUrl,
+        },
+        quantity: item.quantity,
+      }));
+
+      const order = createOrder(
+        user.id,
+        user.name,
+        user.email,
+        items,
+        user.address,
+        user.phone,
+      );
+
+      await OrderAPI.createOrder(order);
+      setCartItems([]);
+      await fetchUserOrders();
+      setCheckoutMessage(`Payment confirmed. Your order ${order.id} is pending review.`);
+    } catch (err) {
+      setCheckoutMessage(err instanceof Error ? err.message : "Failed to place order.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const subtotal = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
@@ -107,7 +187,7 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
                       <div>
                         <p className="text-2xl font-bold text-slate-900">My Order</p>
                         <p className="mt-2 text-sm text-slate-500">Delivery address</p>
-                        <p className="text-base font-semibold text-slate-900">1342 Morris Street</p>
+                        <p className="text-base font-semibold text-slate-900">{user?.address ?? "No delivery address saved"}</p>
                       </div>
                       <button
                         type="button"
@@ -176,10 +256,28 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
                     </div>
                     <button
                       type="button"
-                      className="w-full rounded-3xl bg-orange-500 px-4 py-4 text-base font-semibold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600"
+                      onClick={handleCheckout}
+                      disabled={cartItems.length === 0 || !user?.address || isSubmitting}
+                      className="w-full rounded-3xl bg-orange-500 px-4 py-4 text-base font-semibold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
-                      Proceed
+                      {isSubmitting
+                        ? "Processing payment..."
+                        : cartItems.length === 0
+                        ? "Add items to checkout"
+                        : user?.address
+                        ? "Checkout now"
+                        : "Enter delivery address"}
                     </button>
+
+                    {checkoutMessage ? (
+                      <div className="rounded-[28px] bg-slate-50 p-4 text-sm text-slate-700">
+                        {checkoutMessage}
+                      </div>
+                    ) : null}
+
+                    <div className="mt-6">
+                      <OrderTracking orders={recentOrders} isLoading={ordersLoading} />
+                    </div>
                   </div>
                 </div>
               </div>

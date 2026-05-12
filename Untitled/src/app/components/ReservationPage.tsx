@@ -42,6 +42,10 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
 
+  const now = new Date();
+  const isToday = selectedDate === now.toISOString().slice(0, 10);
+  const currentHour = now.getHours();
+
   const items = unitsByService(selectedService);
   const selectedItemInfo = items.find((item) => item.id === selectedItem) ?? items[0];
   const serviceInfo = serviceCategories.find((service) => service.id === selectedService);
@@ -371,7 +375,9 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
               const isReservedByCurrentUser = reservation?.userId === user.id;
               const walkIn = getWalkInForSlot(slot);
               const isBlockedByWalkIn = Boolean(walkIn);
-              const isDisabled = isReserved || isBlockedByWalkIn;
+              const slotHour = parseInt(slot.split(':')[0], 10);
+              const isPastTime = isToday && slotHour < currentHour;
+              const isDisabled = isReserved || isBlockedByWalkIn || isPastTime;
               const isSelected = selectedSlot === slot && !isDisabled;
               return (
                 <button
@@ -386,6 +392,8 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                       ? "border-[#d71f2a] bg-[#fdecea] text-[#9f2a2c]"
                       : isBlockedByWalkIn
                       ? "border-[#d97706] bg-[#fff7e0] text-[#92400e]"
+                      : isPastTime
+                      ? "border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed"
                       : isSelected
                       ? "border-[#ff7a05] bg-[#fff3e8] text-[#963f08] shadow-[0_12px_30px_rgba(255,122,5,0.16)]"
                       : "border-slate-200 bg-white text-slate-900 hover:border-[#ff7a05]"
@@ -400,6 +408,8 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                         ? "bg-[#fecaca] text-[#9f2a2c]"
                         : isBlockedByWalkIn
                         ? "bg-[#ffe4b5] text-[#92400e]"
+                        : isPastTime
+                        ? "bg-slate-200 text-slate-500"
                         : "bg-[#ffedd5] text-[#b7501f]"
                     }`}
                   >
@@ -409,6 +419,8 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                       ? "Taken"
                       : isBlockedByWalkIn
                       ? "Walk-in"
+                      : isPastTime
+                      ? "Past"
                       : "Open"}
                   </span>
                 </button>
