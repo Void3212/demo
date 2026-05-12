@@ -3,7 +3,7 @@
  * Run this in the browser console or use the migration component
  */
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export interface LocalStorageData {
   users?: any[];
