@@ -2,10 +2,12 @@ import { Router, Request, Response } from 'express';
 import { Database } from 'sqlite';
 import sqlite3 from 'sqlite3';
 import { ReservationService } from '../services/ReservationService.js';
+import { AdminSettingsService } from '../services/AdminSettingsService.js';
 
 export function createReservationRoutes(db: Database<sqlite3.Database, sqlite3.Statement>) {
   const router = Router();
   const reservationService = new ReservationService(db);
+  const adminSettingsService = new AdminSettingsService(db);
 
   // Create a new reservation
   router.post('/', async (req: Request, res: Response) => {
@@ -19,6 +21,11 @@ export function createReservationRoutes(db: Database<sqlite3.Database, sqlite3.S
 
       if (partySize < 1 || partySize > 20) {
         return res.status(400).json({ error: 'Party size must be between 1 and 20' });
+      }
+
+      const settings = await adminSettingsService.getSettings();
+      if (settings.maintenanceMode) {
+        return res.status(503).json({ error: 'Reservations are disabled by maintenance mode' });
       }
 
       // Check availability

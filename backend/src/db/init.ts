@@ -110,6 +110,14 @@ export async function initializeDatabase() {
     )
   `);
 
+  // Create admin_settings table for cross-browser admin configuration
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS admin_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
   // Create indices for faster queries
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_reservations_userId ON reservations(userId);
@@ -125,9 +133,31 @@ export async function initializeDatabase() {
 
   await seedProducts(db);
   await seedReservationUnits(db);
+  await initializeAdminSettings(db);
 
   console.log('✓ Database initialized successfully');
   return db;
+}
+
+async function initializeAdminSettings(db: Database<sqlite3.Database, sqlite3.Statement>) {
+  const row = await db.get<{ count: number }>(`SELECT COUNT(*) AS count FROM admin_settings`);
+  if (row?.count && row.count > 0) {
+    return;
+  }
+
+  const defaults = [
+    { key: 'maintenanceMode', value: false },
+    { key: 'allowGuestCheckout', value: true },
+    { key: 'emailNotifications', value: true },
+    { key: 'businessHours', value: '10:00 - 22:00' },
+    { key: 'defaultCurrency', value: 'PHP' },
+  ];
+
+  const insert = await db.prepare('INSERT INTO admin_settings(key, value) VALUES (?, ?)');
+  for (const item of defaults) {
+    await insert.run(item.key, JSON.stringify(item.value));
+  }
+  await insert.finalize();
 }
 
 async function seedProducts(db: Database<sqlite3.Database, sqlite3.Statement>) {

@@ -5,6 +5,7 @@ import { initializeDatabase } from './db/init.js';
 import { createReservationRoutes } from './routes/reservations.js';
 import { createProductRoutes } from './routes/products.js';
 import { createReservationUnitRoutes } from './routes/reservationUnits.js';
+import { createAdminSettingsRoutes } from './routes/adminSettings.js';
 
 dotenv.config();
 
@@ -36,6 +37,7 @@ async function startServer() {
     app.use('/api/reservations', createReservationRoutes(db));
     app.use('/api/products', createProductRoutes(db));
     app.use('/api/reservation-units', createReservationUnitRoutes(db));
+    app.use('/api/admin-settings', createAdminSettingsRoutes(db));
 
     // Health check endpoint
     app.get('/api/health', (req, res) => {

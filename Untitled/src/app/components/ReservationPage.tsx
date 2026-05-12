@@ -1,7 +1,9 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useReservationUnits } from "../../hooks/useReservationUnits";
 import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reservationAPI";
+import { AdminSettingsAPI, type AdminSettings } from "../../api/adminSettingsAPI";
 import { type User } from "../data/users";
+import { loadAdminSettings } from "../../utils/adminSettings";
 
 interface ReservationPageProps {
   onNavigateBack: () => void;
@@ -35,6 +37,7 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
   const [paymentMethod, setPaymentMethod] = useState<string>("visa");
   const [allReservations, setAllReservations] = useState<Reservation[]>([]);
   const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
+  const [adminSettings, setAdminSettings] = useState<AdminSettings>(loadAdminSettings());
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
 
@@ -83,6 +86,15 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       }
     };
 
+    try {
+      const storedSettings = localStorage.getItem("admin_settings");
+      if (storedSettings) {
+        setAdminSettings(JSON.parse(storedSettings) as AdminSettings);
+      }
+    } catch (error) {
+      console.error("Failed to load admin settings:", error);
+    }
+
     // Load walk-ins from localStorage
     try {
       const storedWalkIns = localStorage.getItem('walkins');
@@ -96,7 +108,39 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
     loadReservations();
   }, []);
 
+  useEffect(() => {
+    const refreshSettings = async () => {
+      try {
+        const fetched = await AdminSettingsAPI.getSettings();
+        setAdminSettings(fetched);
+        localStorage.setItem("admin_settings", JSON.stringify(fetched));
+      } catch (error) {
+        console.error("Failed to refresh admin settings from backend:", error);
+      }
+    };
+
+    refreshSettings();
+    const intervalId = window.setInterval(refreshSettings, 10000);
+    window.addEventListener("focus", refreshSettings);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", refreshSettings);
+    };
+  }, []);
+
   const handleReserve = async () => {
+    try {
+      const latestSettings = await AdminSettingsAPI.getSettings();
+      setAdminSettings(latestSettings);
+      if (latestSettings.maintenanceMode) {
+        setReservationError("New reservations are currently disabled while maintenance mode is enabled.");
+        return;
+      }
+    } catch (error) {
+      console.error("Failed to load latest admin settings before reservation:", error);
+    }
+
     const activeWalkIn = getWalkInForSlot(selectedSlot);
     if (!selectedItem || reservedSlotMap.has(selectedSlot) || activeWalkIn) {
       if (activeWalkIn) {
@@ -120,6 +164,10 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       });
 
       setAllReservations((prev) => [reservation, ...prev]);
+
+      if (adminSettings.emailNotifications) {
+        console.info("Email notification: A new reservation has been created.");
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Failed to create reservation";
       setReservationError(message);
@@ -249,6 +297,11 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
             <p className="mt-2 text-sm text-slate-600">Book the perfect time for your selected unit.</p>
           </div>
 
+          {adminSettings.maintenanceMode && (
+            <div className="rounded-[32px] border border-[#f8d7da] bg-[#fff1f2] p-5 text-sm text-[#842029]">
+              Reservations are currently paused while maintenance mode is enabled. New bookings are disabled until maintenance mode is turned off.
+            </div>
+          )}
           <div className="mt-6 grid gap-4 sm:grid-cols-[1fr_auto] items-end">
             <div>
               <label className="block text-sm font-semibold text-slate-700">Choose date</label>
@@ -387,10 +440,17 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
 
             <button
               onClick={handleReserve}
-              disabled={isSubmitting || reservedSlotMap.has(selectedSlot) || Boolean(selectedSlotWalkIn)}
+              disabled={
+                isSubmitting ||
+                adminSettings.maintenanceMode ||
+                reservedSlotMap.has(selectedSlot) ||
+                Boolean(selectedSlotWalkIn)
+              }
               className="mt-5 w-full rounded-[28px] bg-[#ff7a05] px-6 py-4 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(255,122,5,0.22)] transition hover:bg-[#e66b00] disabled:cursor-not-allowed disabled:bg-[#f1c3a0]"
             >
-              {selectedSlotWalkIn
+              {adminSettings.maintenanceMode
+                ? "Maintenance mode active"
+                : selectedSlotWalkIn
                 ? "Walk-in occupied"
                 : reservedSlotMap.has(selectedSlot)
                 ? "Slot reserved"

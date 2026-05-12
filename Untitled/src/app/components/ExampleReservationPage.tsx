@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { useReservations } from '../../hooks/useReservations';
 import { getCurrentUser } from '../data/users';
+import { loadAdminSettings } from '../../utils/adminSettings';
 import type { User } from '../data/users';
 
 interface ExampleReservationPageProps {
@@ -21,6 +22,8 @@ export default function ExampleReservationPage({ onNavigateBack }: ExampleReserv
   const [partySize, setPartySize] = useState(4);
   const [specialRequests, setSpecialRequests] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(false);
+  const [emailNotifications, setEmailNotifications] = useState(true);
 
   const { reservations, loading, error, createReservation, checkAvailability, deleteReservation } = useReservations({
     userId: user?.id,
@@ -30,10 +33,19 @@ export default function ExampleReservationPage({ onNavigateBack }: ExampleReserv
   useEffect(() => {
     const currentUser = getCurrentUser();
     setUser(currentUser);
+
+    const settings = loadAdminSettings();
+    setMaintenanceMode(settings.maintenanceMode);
+    setEmailNotifications(settings.emailNotifications);
   }, []);
 
   const handleCreateReservation = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (maintenanceMode) {
+      alert('Reservations are currently disabled while maintenance mode is enabled.');
+      return;
+    }
 
     if (!user) {
       alert('Please log in first');
@@ -58,6 +70,10 @@ export default function ExampleReservationPage({ onNavigateBack }: ExampleReserv
         partySize,
         specialRequests: specialRequests || undefined,
       });
+
+      if (emailNotifications) {
+        alert('Email notification queued for this reservation.');
+      }
 
       alert('Reservation created successfully!');
 
@@ -91,6 +107,12 @@ export default function ExampleReservationPage({ onNavigateBack }: ExampleReserv
           <h1 className="text-3xl font-bold mb-6">Make a Reservation</h1>
 
           {user && <p className="mb-4 text-gray-600">Logged in as: {user.name}</p>}
+
+          {maintenanceMode && (
+            <div className="mb-4 rounded-lg border border-[#f8d7da] bg-[#fff1f2] p-4 text-sm text-[#842029]">
+              Reservations are disabled while maintenance mode is enabled.
+            </div>
+          )}
 
           {error && <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>}
 

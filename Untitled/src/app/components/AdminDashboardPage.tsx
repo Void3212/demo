@@ -3,6 +3,7 @@ import { type Product, type ProductCategory } from "../data/products";
 import { type User, getUsers } from "../data/users";
 import { useReservationUnits } from "../../hooks/useReservationUnits";
 import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reservationAPI";
+import { AdminSettingsAPI, type AdminSettings } from "../../api/adminSettingsAPI";
 import {
   type ReservationServiceCategory,
   type ReservationUnit,
@@ -140,26 +141,43 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   });
 
   useEffect(() => {
-    try {
-      const storedSettings = localStorage.getItem("admin_settings");
-      if (storedSettings) {
-        setAdminSettings(JSON.parse(storedSettings));
+    const loadSettings = async () => {
+      try {
+        const fetched = await AdminSettingsAPI.getSettings();
+        setAdminSettings(fetched);
+        localStorage.setItem("admin_settings", JSON.stringify(fetched));
+      } catch (error) {
+        console.error("Failed to load admin settings from backend:", error);
+        try {
+          const storedSettings = localStorage.getItem("admin_settings");
+          if (storedSettings) {
+            setAdminSettings(JSON.parse(storedSettings));
+          }
+        } catch (innerError) {
+          console.error("Failed to load admin settings from localStorage:", innerError);
+        }
       }
-    } catch (error) {
-      console.error("Failed to load admin settings:", error);
-    }
+    };
+
+    loadSettings();
   }, []);
 
-  const handleSettingChange = <K extends keyof AdminSettings>(key: K, value: AdminSettings[K]) => {
-    setAdminSettings((current) => {
-      const next = { ...current, [key]: value } as AdminSettings;
+  const handleSettingChange = async <K extends keyof AdminSettings>(key: K, value: AdminSettings[K]) => {
+    setAdminSettings((current) => ({ ...current, [key]: value } as AdminSettings));
+
+    try {
+      const nextSettings = await AdminSettingsAPI.updateSettings({ [key]: value });
+      setAdminSettings(nextSettings);
+      localStorage.setItem("admin_settings", JSON.stringify(nextSettings));
+    } catch (error) {
+      console.error("Failed to update admin settings on backend:", error);
       try {
+        const next = { ...adminSettings, [key]: value } as AdminSettings;
         localStorage.setItem("admin_settings", JSON.stringify(next));
-      } catch (error) {
-        console.error("Failed to save admin settings:", error);
+      } catch (innerError) {
+        console.error("Failed to save admin settings locally:", innerError);
       }
-      return next;
-    });
+    }
   };
 
   useEffect(() => {
