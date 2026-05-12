@@ -26,6 +26,8 @@ export interface WalkIn {
   serviceId: string;
   serviceName: string;
   paymentAmount: number;
+  amountReceived: number;
+  changeAmount: number;
   paymentMethod: 'cash' | 'card' | 'gcash' | 'other';
   customerName?: string;
   notes?: string;
@@ -126,6 +128,8 @@ export class ReservationAPI {
     serviceId: string;
     serviceName: string;
     paymentAmount: number;
+    amountReceived: number;
+    changeAmount: number;
     paymentMethod: 'cash' | 'card' | 'gcash' | 'other';
     customerName?: string;
     notes?: string;

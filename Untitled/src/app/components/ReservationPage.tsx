@@ -86,6 +86,19 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       }
     };
 
+    const loadWalkIns = () => {
+      try {
+        const storedWalkIns = localStorage.getItem('walkins');
+        if (storedWalkIns) {
+          setWalkIns(JSON.parse(storedWalkIns));
+        } else {
+          setWalkIns([]);
+        }
+      } catch (error) {
+        console.error("Failed to load walk-ins:", error);
+      }
+    };
+
     try {
       const storedSettings = localStorage.getItem("admin_settings");
       if (storedSettings) {
@@ -95,17 +108,29 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       console.error("Failed to load admin settings:", error);
     }
 
-    // Load walk-ins from localStorage
-    try {
-      const storedWalkIns = localStorage.getItem('walkins');
-      if (storedWalkIns) {
-        setWalkIns(JSON.parse(storedWalkIns));
-      }
-    } catch (error) {
-      console.error("Failed to load walk-ins:", error);
-    }
-
     loadReservations();
+    loadWalkIns();
+
+    const refresh = () => {
+      loadReservations();
+      loadWalkIns();
+    };
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'walkins') {
+        loadWalkIns();
+      }
+    };
+
+    const intervalId = window.setInterval(refresh, 10000);
+    window.addEventListener('focus', refresh);
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   useEffect(() => {

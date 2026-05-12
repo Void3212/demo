@@ -104,6 +104,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [newProduct, setNewProduct] = useState<EditableProduct>(emptyEditableProduct);
   const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
   const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [newWalkIn, setNewWalkIn] = useState({
     date: new Date().toISOString().split('T')[0],
     startTime: '09:00',
@@ -113,6 +114,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     serviceId: 'billiard',
     serviceName: '',
     paymentAmount: 0,
+    amountReceived: 0,
+    changeAmount: 0,
     paymentMethod: 'cash' as const,
     customerName: '',
     notes: '',
@@ -120,6 +123,119 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
 
   const { products: productList, addProduct, updateProduct: updateProductBackend, toggleVisibility, loading } = useProducts({ autoFetch: true });
 
+  const timeSlots = useMemo(
+    () => Array.from({ length: 24 }, (_, index) => `${index.toString().padStart(2, "0")}:00`),
+    []
+  );
+
+  const parseHour = (value: string) => Number(value.split(":")[0]);
+
+  const timeRangesOverlap = (startA: number, endA: number, startB: number, endB: number) =>
+    startA < endB && startB < endA;
+
+  const hasTimeConflict = (
+    date: string,
+    unitId: string,
+    startTime: string,
+    endTime: string,
+  ) => {
+    if (!date || !unitId || !startTime || !endTime) {
+      return false;
+    }
+
+    const startHour = parseHour(startTime);
+    const endHour = parseHour(endTime);
+
+    if (endHour <= startHour) {
+      return false;
+    }
+
+    const reservationConflict = reservations.some((reservation) => {
+      if (reservation.date !== date || reservation.unitId !== unitId) return false;
+      const reservationStart = parseHour(reservation.time);
+      const reservationEnd = reservationStart + 1;
+      return timeRangesOverlap(startHour, endHour, reservationStart, reservationEnd);
+    });
+
+    const walkInConflict = walkIns.some((walkin) => {
+      if (walkin.date !== date || walkin.unitId !== unitId) return false;
+      const walkInStart = parseHour(walkin.startTime);
+      const walkInEnd = parseHour(walkin.endTime);
+      return timeRangesOverlap(startHour, endHour, walkInStart, walkInEnd);
+    });
+
+    return reservationConflict || walkInConflict;
+  };
+
+  const isStartTimeBlocked = (startTime: string) => {
+    if (!newWalkIn.unitId) return false;
+    if (parseHour(newWalkIn.endTime) <= parseHour(startTime)) return false;
+    return hasTimeConflict(newWalkIn.date, newWalkIn.unitId, startTime, newWalkIn.endTime);
+  };
+
+  const isEndTimeBlocked = (endTime: string) =>
+    Boolean(newWalkIn.unitId && hasTimeConflict(newWalkIn.date, newWalkIn.unitId, newWalkIn.startTime, endTime));
+
+  const getSlotEndTime = (slot: string) => {
+    const hour = parseHour(slot);
+    const nextHour = hour + 1;
+    return nextHour < 24 ? `${nextHour.toString().padStart(2, "0")}:00` : slot;
+  };
+
+  const isSlotBlocked = (slot: string) => {
+    if (!newWalkIn.unitId || !newWalkIn.date) return true;
+    const slotEnd = getSlotEndTime(slot);
+    return hasTimeConflict(newWalkIn.date, newWalkIn.unitId, slot, slotEnd);
+  };
+
+  const isSlotInSelectedRange = (slot: string) => {
+    const slotHour = parseHour(slot);
+    const startHour = parseHour(newWalkIn.startTime);
+    const endHour = parseHour(newWalkIn.endTime);
+    return slotHour >= startHour && slotHour < endHour;
+  };
+
+  const canSelectEndSlot = (slot: string) => {
+    if (!newWalkIn.unitId || parseHour(slot) <= parseHour(newWalkIn.startTime)) return false;
+    return !hasTimeConflict(newWalkIn.date, newWalkIn.unitId, newWalkIn.startTime, slot);
+  };
+
+  const handleSlotClick = (slot: string) => {
+    if (!newWalkIn.unitId) return;
+    if (isSlotBlocked(slot)) return;
+
+    const slotHour = parseHour(slot);
+    const startHour = parseHour(newWalkIn.startTime);
+
+    if (slotHour <= startHour || !canSelectEndSlot(slot)) {
+      const nextTime = getSlotEndTime(slot);
+      setNewWalkIn((current) => ({ ...current, startTime: slot, endTime: nextTime }));
+      return;
+    }
+
+    setNewWalkIn((current) => ({ ...current, endTime: slot }));
+  };
+
+  const selectedTimeConflict = Boolean(
+    newWalkIn.unitId &&
+      (parseHour(newWalkIn.endTime) <= parseHour(newWalkIn.startTime) ||
+        hasTimeConflict(newWalkIn.date, newWalkIn.unitId, newWalkIn.startTime, newWalkIn.endTime)),
+  );
+
+  useEffect(() => {
+    if (!newWalkIn.unitId) {
+      return;
+    }
+
+    if (isStartTimeBlocked(newWalkIn.startTime)) {
+      const firstOpenSlot = timeSlots.find((slot) => !isStartTimeBlocked(slot));
+      if (firstOpenSlot) {
+        setNewWalkIn((current) => ({ ...current, startTime: firstOpenSlot }));
+      }
+    }
+  }, [newWalkIn.unitId, newWalkIn.date, newWalkIn.endTime, reservations, walkIns]);
+
+  const [reservationUsers, setReservationUsers] = useState<User[]>([]);
   const {
     units,
     serviceCategories: unitCategories,
@@ -130,8 +246,6 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [selectedUnitCategory, setSelectedUnitCategory] = useState<ReservationServiceCategory["id"]>(unitCategories[0]?.id ?? "billiard");
   const [unitForm, setUnitForm] = useState<ReservationUnit>(emptyReservationUnit);
   const [editingUnit, setEditingUnit] = useState<ReservationUnit | null>(null);
-  const [reservations, setReservations] = useState<Reservation[]>([]);
-  const [reservationUsers, setReservationUsers] = useState<User[]>([]);
   const [adminSettings, setAdminSettings] = useState<AdminSettings>({
     maintenanceMode: false,
     allowGuestCheckout: true,
@@ -228,31 +342,83 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       }
     };
 
-    loadReservations();
-    setReservationUsers(getUsers());
-  }, []);
-
-  // Load walk-ins from localStorage
-  useEffect(() => {
-    try {
-      const storedWalkIns = localStorage.getItem('walkins');
-      if (storedWalkIns) {
-        setWalkIns(JSON.parse(storedWalkIns));
+    const loadWalkIns = () => {
+      try {
+        const storedWalkIns = localStorage.getItem('walkins');
+        if (storedWalkIns) {
+          const parsed = JSON.parse(storedWalkIns) as any[];
+          const normalized = parsed.map((walkin) => ({
+            amountReceived: walkin.amountReceived ?? walkin.paymentAmount ?? 0,
+            changeAmount:
+              walkin.changeAmount ?? Math.max(0, (walkin.amountReceived ?? walkin.paymentAmount ?? 0) - (walkin.paymentAmount ?? 0)),
+            ...walkin,
+          }));
+          setWalkIns(normalized);
+        } else {
+          setWalkIns([]);
+        }
+      } catch (error) {
+        console.error('Failed to load walk-ins:', error);
       }
-    } catch (error) {
-      console.error('Failed to load walk-ins:', error);
-    }
+    };
+
+    loadReservations();
+    loadWalkIns();
+    setReservationUsers(getUsers());
+
+    const refresh = () => {
+      loadReservations();
+      loadWalkIns();
+    };
+
+    const intervalId = window.setInterval(refresh, 10000);
+    window.addEventListener('focus', refresh);
+
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === 'walkins') {
+        loadWalkIns();
+      }
+    };
+
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   const handleAddWalkIn = () => {
-    if (!newWalkIn.customerName.trim() || !newWalkIn.paymentAmount) {
-      alert('Please enter customer name and payment amount');
+    if (!newWalkIn.customerName.trim() || !newWalkIn.paymentAmount || !newWalkIn.amountReceived) {
+      alert('Please enter customer name, payment amount, and the amount received.');
+      return;
+    }
+
+    if (!newWalkIn.unitId) {
+      alert('Please select a unit for the walk-in.');
+      return;
+    }
+
+    if (newWalkIn.paymentMethod === 'cash' && newWalkIn.amountReceived < newWalkIn.paymentAmount) {
+      alert('Cash received must be equal to or greater than the payment amount.');
+      return;
+    }
+
+    if (parseHour(newWalkIn.endTime) <= parseHour(newWalkIn.startTime)) {
+      alert('End time must be later than start time.');
+      return;
+    }
+
+    if (hasTimeConflict(newWalkIn.date, newWalkIn.unitId, newWalkIn.startTime, newWalkIn.endTime)) {
+      alert('The selected walk-in time conflicts with an existing reservation or walk-in. Please choose a different time.');
       return;
     }
 
     const walkin: WalkIn = {
       id: `walkin-${Date.now()}`,
       ...newWalkIn,
+      changeAmount: Math.max(0, newWalkIn.amountReceived - newWalkIn.paymentAmount),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -271,6 +437,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       serviceId: 'billiard',
       serviceName: '',
       paymentAmount: 0,
+      amountReceived: 0,
+      changeAmount: 0,
       paymentMethod: 'cash',
       customerName: '',
       notes: '',
@@ -863,30 +1031,131 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                         ))}
                       </select>
                     </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700">Start Time</label>
-                      <input
-                        type="time"
-                        value={newWalkIn.startTime}
-                        onChange={(e) => setNewWalkIn({...newWalkIn, startTime: e.target.value})}
-                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
-                      />
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-semibold text-slate-700">Choose your time frame</label>
+                      <p className="mt-2 text-xs text-slate-500">
+                        Click a slot to set the start time, then click a later slot to set the end time for the range.
+                      </p>
+                      <div className="mt-4 grid gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                        {timeSlots.map((slot) => {
+                          const blocked = isSlotBlocked(slot);
+                          const selected = isSlotInSelectedRange(slot);
+                          const isStart = slot === newWalkIn.startTime;
+                          const isEnd = slot === newWalkIn.endTime && parseHour(slot) > parseHour(newWalkIn.startTime);
+                          return (
+                            <button
+                              key={slot}
+                              type="button"
+                              onClick={() => handleSlotClick(slot)}
+                              disabled={!newWalkIn.unitId || blocked}
+                              className={
+                                `rounded-[20px] border px-3 py-3 text-left text-sm font-semibold transition focus:outline-none ` +
+                                (blocked
+                                  ? "border-red-200 bg-red-50 text-red-700"
+                                  : selected
+                                  ? "border-[#1f5eff] bg-[#e8f0ff] text-[#1f3d8f]"
+                                  : "border-slate-200 bg-white text-slate-900 hover:border-[#ffb57d] hover:bg-[#fff4e8]")
+                              }
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span>{slot}</span>
+                                {isStart && <span className="rounded-full bg-[#dbeafe] px-2 py-0.5 text-[11px] font-bold text-[#1d4ed8]">Start</span>}
+                                {isEnd && <span className="rounded-full bg-[#d1fae5] px-2 py-0.5 text-[11px] font-bold text-[#065f46]">End</span>}
+                              </div>
+                              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.12em]">
+                                {blocked ? "Blocked" : selected ? "Selected" : "Open"}
+                              </p>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {!newWalkIn.unitId && (
+                        <p className="mt-2 text-xs text-slate-500">Select a unit to see availability for this date.</p>
+                      )}
+                      {newWalkIn.unitId && selectedTimeConflict && (
+                        <p className="mt-2 text-xs text-red-700">
+                          The selected time range overlaps an existing reservation or walk-in. Please adjust the start or end slot.
+                        </p>
+                      )}
                     </div>
-                    <div>
-                      <label className="block text-sm font-semibold text-slate-700">End Time</label>
-                      <input
-                        type="time"
-                        value={newWalkIn.endTime}
-                        onChange={(e) => setNewWalkIn({...newWalkIn, endTime: e.target.value})}
-                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
-                      />
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">Start Time</label>
+                        <select
+                          value={newWalkIn.startTime}
+                          onChange={(e) => setNewWalkIn({...newWalkIn, startTime: e.target.value})}
+                          className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                        >
+                          {timeSlots.map((slot) => {
+                            const blocked = newWalkIn.unitId && isStartTimeBlocked(slot);
+                            return (
+                              <option key={slot} value={slot} disabled={blocked}>
+                                {slot}{blocked ? " — blocked" : ""}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        {newWalkIn.unitId && isStartTimeBlocked(newWalkIn.startTime) && (
+                          <p className="mt-2 text-xs text-red-700">
+                            This start time conflicts with an existing reservation or walk-in.
+                          </p>
+                        )}
+                      </div>
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-700">End Time</label>
+                        <select
+                          value={newWalkIn.endTime}
+                          onChange={(e) => setNewWalkIn({...newWalkIn, endTime: e.target.value})}
+                          className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                        >
+                          {timeSlots
+                            .filter((slot) => parseHour(slot) > parseHour(newWalkIn.startTime))
+                            .map((slot) => {
+                              const blocked = newWalkIn.unitId && isEndTimeBlocked(slot);
+                              return (
+                                <option key={slot} value={slot} disabled={blocked}>
+                                  {slot}{blocked ? " — blocked" : ""}
+                                </option>
+                              );
+                            })}
+                        </select>
+                        {newWalkIn.unitId && selectedTimeConflict && (
+                          <p className="mt-2 text-xs text-red-700">
+                            The selected time range overlaps an existing reservation or walk-in. Please adjust the start or end time.
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-semibold text-slate-700">Payment Amount (₱)</label>
                       <input
                         type="number"
                         value={newWalkIn.paymentAmount}
-                        onChange={(e) => setNewWalkIn({...newWalkIn, paymentAmount: Number(e.target.value)})}
+                        onChange={(e) => {
+                          const paymentAmount = Number(e.target.value);
+                          setNewWalkIn((current) => ({
+                            ...current,
+                            paymentAmount,
+                            changeAmount: Math.max(0, current.amountReceived - paymentAmount),
+                          }));
+                        }}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Amount Received (₱)</label>
+                      <input
+                        type="number"
+                        value={newWalkIn.amountReceived}
+                        onChange={(e) => {
+                          const amountReceived = Number(e.target.value);
+                          setNewWalkIn((current) => ({
+                            ...current,
+                            amountReceived,
+                            changeAmount: Math.max(0, amountReceived - current.paymentAmount),
+                          }));
+                        }}
                         className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
                         placeholder="0"
                       />
@@ -895,7 +1164,15 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                       <label className="block text-sm font-semibold text-slate-700">Payment Method</label>
                       <select
                         value={newWalkIn.paymentMethod}
-                        onChange={(e) => setNewWalkIn({...newWalkIn, paymentMethod: e.target.value as any})}
+                        onChange={(e) => {
+                          const method = e.target.value as WalkIn['paymentMethod'];
+                          setNewWalkIn((current) => ({
+                            ...current,
+                            paymentMethod: method,
+                            amountReceived: method === 'cash' ? current.amountReceived : current.paymentAmount,
+                            changeAmount: Math.max(0, (method === 'cash' ? current.amountReceived : current.paymentAmount) - current.paymentAmount),
+                          }));
+                        }}
                         className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
                       >
                         <option value="cash">Cash</option>
@@ -903,6 +1180,16 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                         <option value="gcash">GCash</option>
                         <option value="other">Other</option>
                       </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Change Due (₱)</label>
+                      <input
+                        type="number"
+                        value={newWalkIn.changeAmount}
+                        readOnly
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-slate-100 px-4 py-3 text-slate-900 outline-none"
+                        placeholder="0"
+                      />
                     </div>
                     <div className="sm:col-span-2">
                       <label className="block text-sm font-semibold text-slate-700">Notes</label>
@@ -918,9 +1205,16 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                   <button
                     type="button"
                     onClick={handleAddWalkIn}
-                    className="mt-6 rounded-full bg-[#ff7a05] px-6 py-3 font-semibold text-white shadow-[0_10px_30px_rgba(255,122,5,0.16)] hover:bg-[#e64b12]"
+                    disabled={
+                      !newWalkIn.customerName.trim() ||
+                      !newWalkIn.paymentAmount ||
+                      !newWalkIn.amountReceived ||
+                      !newWalkIn.unitId ||
+                      selectedTimeConflict
+                    }
+                    className="mt-6 rounded-full bg-[#ff7a05] px-6 py-3 font-semibold text-white shadow-[0_10px_30px_rgba(255,122,5,0.16)] hover:bg-[#e64b12] disabled:cursor-not-allowed disabled:bg-[#f4b783]"
                   >
-                    Record Walk-In
+                    {selectedTimeConflict ? 'Fix overlapping time' : 'Record Walk-In'}
                   </button>
                 </div>
 
@@ -940,7 +1234,13 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                               </p>
                               <div className="mt-3 flex flex-wrap gap-3">
                                 <span className="rounded-full bg-[#fff0e3] px-3 py-1 text-sm font-semibold text-[#b7501f]">
-                                  ₱{walkin.paymentAmount}
+                                  Due ₱{walkin.paymentAmount}
+                                </span>
+                                <span className="rounded-full bg-[#f6f6ff] px-3 py-1 text-sm font-semibold text-[#3730a3]">
+                                  Received ₱{walkin.amountReceived}
+                                </span>
+                                <span className="rounded-full bg-[#d4f8e8] px-3 py-1 text-sm font-semibold text-[#166d3b]">
+                                  Change ₱{walkin.changeAmount}
                                 </span>
                                 <span className="rounded-full bg-[#eef2ff] px-3 py-1 text-sm font-semibold text-[#3730a3]">
                                   {walkin.paymentMethod}
