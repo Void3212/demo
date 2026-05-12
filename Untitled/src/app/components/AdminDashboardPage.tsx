@@ -97,6 +97,13 @@ const emptyReservationUnit: ReservationUnit = {
   active: true,
 };
 
+type HistoryStatus = 'completed' | 'cancelled';
+type HistoryEntry =
+  | { kind: 'reservation'; item: Reservation; status: HistoryStatus }
+  | { kind: 'walkin'; item: WalkIn; status: HistoryStatus };
+
+const HISTORY_STORAGE_KEY = 'admin_booking_history';
+
 export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPageProps) {
   const [activeSection, setActiveSection] = useState<typeof navItems[number]["key"]>("schedule");
   const [visibleProductIds, setVisibleProductIdsState] = useState<string[]>([]);
@@ -105,6 +112,18 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
   const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [historyRecords, setHistoryRecords] = useState<HistoryEntry[]>(() => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const stored = window.localStorage.getItem(HISTORY_STORAGE_KEY);
+      return stored ? (JSON.parse(stored) as HistoryEntry[]) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [historyKindFilter, setHistoryKindFilter] = useState<'all' | 'reservation' | 'walkin'>('all');
+  const [historyStatusFilter, setHistoryStatusFilter] = useState<'all' | HistoryStatus>('all');
+  const [historyServiceFilter, setHistoryServiceFilter] = useState<'all' | string>('all');
   const [newWalkIn, setNewWalkIn] = useState({
     date: new Date().toISOString().split('T')[0],
     startTime: '09:00',
@@ -136,6 +155,18 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     const intervalId = window.setInterval(() => setCurrentTime(new Date()), 30000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(historyRecords));
+    } catch {
+      // ignore storage errors
+    }
+  }, [historyRecords]);
+
+  const addHistoryRecord = (record: HistoryEntry) => {
+    setHistoryRecords((prev) => [record, ...prev.filter((existing) => existing.item.id !== record.item.id || existing.kind !== record.kind)]);
+  };
 
   const { products: productList, addProduct, updateProduct: updateProductBackend, toggleVisibility, loading } = useProducts({ autoFetch: true });
 
@@ -379,7 +410,31 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     const loadReservations = async () => {
       try {
         const allReservations = await ReservationAPI.getAllReservations();
-        setReservations(allReservations);
+        const active = allReservations.filter(
+          (reservation) => reservation.status !== 'cancelled' && reservation.status !== 'completed',
+        );
+        const archived = allReservations.filter(
+          (reservation) => reservation.status === 'cancelled' || reservation.status === 'completed',
+        );
+
+        setReservations(active);
+        setHistoryRecords((prev) => {
+          const merged = [...archived.map((reservation) => ({
+            kind: 'reservation' as const,
+            item: reservation,
+            status: reservation.status === 'cancelled' ? 'cancelled' : 'completed',
+          })), ...prev];
+          const unique = Array.from(
+            merged.reduce((map, record) => {
+              const key = `${record.kind}:${record.item.id}`;
+              if (!map.has(key)) {
+                map.set(key, record);
+              }
+              return map;
+            }, new Map<string, HistoryEntry>()),
+          ).map(([, record]) => record);
+          return unique;
+        });
       } catch (error) {
         console.error('Failed to load reservations:', error);
       }
@@ -484,9 +539,13 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const handleDeleteWalkIn = async (id: string) => {
     if (!confirm('Cancel this walk-in record?')) return;
 
+    const existingWalkIn = walkIns.find((walkin) => walkin.id === id);
+    if (!existingWalkIn) return;
+
     try {
       await ReservationAPI.deleteWalkin(id);
       setWalkIns((prev) => prev.filter((w) => w.id !== id));
+      addHistoryRecord({ kind: 'walkin', item: existingWalkIn, status: 'cancelled' });
     } catch (error) {
       console.error('Failed to delete walk-in:', error);
       alert('Failed to cancel walk-in. Please try again.');
@@ -498,7 +557,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
 
     try {
       const cancelledReservation = await ReservationAPI.cancelReservation(reservationId);
-      setReservations((prev) => prev.map((reservation) => reservation.id === reservationId ? cancelledReservation : reservation));
+      setReservations((prev) => prev.filter((reservation) => reservation.id !== reservationId));
+      addHistoryRecord({ kind: 'reservation', item: cancelledReservation, status: 'cancelled' });
     } catch (error) {
       console.error('Failed to cancel reservation:', error);
       alert('Failed to cancel reservation. Please try again.');
@@ -514,9 +574,19 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       if (entry.kind === 'walkin') {
         await ReservationAPI.deleteWalkin(entry.item.id);
         setWalkIns((prev) => prev.filter((walkin) => walkin.id !== entry.item.id));
+        addHistoryRecord({ kind: 'walkin', item: entry.item, status: 'completed' });
       } else {
-        await ReservationAPI.deleteReservation(entry.item.id);
+        const finishedReservation =
+          entry.item.status === 'cancelled'
+            ? entry.item
+            : await ReservationAPI.updateReservation(entry.item.id, { status: 'completed' });
+
         setReservations((prev) => prev.filter((reservation) => reservation.id !== entry.item.id));
+        addHistoryRecord({
+          kind: 'reservation',
+          item: finishedReservation,
+          status: finishedReservation.status === 'cancelled' ? 'cancelled' : 'completed',
+        });
       }
     } catch (error) {
       console.error('Failed to remove completed booking:', error);
@@ -529,6 +599,51 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     [reservations, selectedUnitCategory],
   );
 
+  const activeReservations = useMemo(
+    () => reservations.filter((reservation) => reservation.status !== 'cancelled' && reservation.status !== 'completed'),
+    [reservations],
+  );
+
+  const filteredHistoryRecords = useMemo(
+    () => historyRecords.filter((entry) => {
+      if (historyKindFilter !== 'all' && entry.kind !== historyKindFilter) {
+        return false;
+      }
+      if (historyStatusFilter !== 'all' && entry.status !== historyStatusFilter) {
+        return false;
+      }
+      if (historyServiceFilter !== 'all' && entry.kind === 'reservation' && entry.item.serviceId !== historyServiceFilter) {
+        return false;
+      }
+      return true;
+    }),
+    [historyRecords, historyKindFilter, historyStatusFilter, historyServiceFilter],
+  );
+
+  const historyGroups = useMemo(() => {
+    const groups = new Map<string, { date: string; time: string; entries: HistoryEntry[] }>();
+
+    filteredHistoryRecords.forEach((entry) => {
+      const date = entry.item.date ?? 'Unknown date';
+      const time = entry.kind === 'reservation' ? entry.item.time ?? 'Unknown time' : entry.item.startTime ?? 'Unknown time';
+      const key = `${date}||${time}`;
+      const existing = groups.get(key);
+
+      if (existing) {
+        existing.entries.push(entry);
+      } else {
+        groups.set(key, { date, time, entries: [entry] });
+      }
+    });
+
+    return Array.from(groups.values()).sort((a, b) => {
+      if (a.date === b.date) {
+        return a.time.localeCompare(b.time);
+      }
+      return a.date.localeCompare(b.date);
+    });
+  }, [filteredHistoryRecords]);
+
   const calendarGroups = useMemo(() => {
     type CalendarEntry =
       | { kind: 'reservation'; item: Reservation }
@@ -536,7 +651,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
 
     const groups = new Map<string, { date: string; time: string; entries: CalendarEntry[] }>();
 
-    reservations.forEach((reservation) => {
+    activeReservations.forEach((reservation) => {
       const date = reservation.date ?? "Unknown date";
       const time = reservation.time ?? "Unknown time";
       const key = `${date}||${time}`;
@@ -570,7 +685,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       }
       return a.date.localeCompare(b.date);
     });
-  }, [reservations, walkIns]);
+  }, [activeReservations, walkIns]);
 
   const unitCategoryOptions = useMemo(
     () => unitCategories.map((category) => ({ id: category.id, label: category.label })),
@@ -1558,41 +1673,127 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                 </div>
               </section>
             ) : activeSection === "history" ? (
-              <section className="mt-8 space-y-6">
-                <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
-                  <p className="text-xl font-semibold text-slate-900">Recent Booking History</p>
-                  <div className="mt-6 space-y-4">
-                    {reservations.slice(0, 6).map((reservation) => (
-                      <div key={reservation.id} className="rounded-[24px] border border-[#dbe2f0] bg-white p-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{reservation.userName ?? reservation.userId}</p>
-                            <p className="mt-1 text-xs text-slate-500">{reservation.date} · {reservation.time}</p>
-                          </div>
-                          <span className="rounded-full bg-[#eef2ff] px-3 py-1 text-xs font-semibold text-[#3730a3]">{reservation.status}</span>
-                        </div>
-                        <p className="mt-3 text-sm text-slate-700">
-                          {serviceLabelMap.get(reservation.serviceId ?? "") ?? reservation.serviceId ?? "Service"} · {reservation.unitName ?? reservation.unitId ?? "Unit"}
-                        </p>
+                            <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2f0] bg-[#f9fafb] p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">Booking History</p>
+                      <p className="mt-2 text-sm text-slate-600">Review past reservation and walk-in records in a filterable timeline.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['all', 'reservation', 'walkin'].map((kind) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          onClick={() => setHistoryKindFilter(kind as 'all' | 'reservation' | 'walkin')}
+                          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                            historyKindFilter === kind
+                              ? 'bg-[#1f5eff] text-white shadow-sm shadow-[#1f5eff]/20'
+                              : 'bg-[#f3f4f6] text-slate-700 hover:bg-[#e5e7eb]'
+                          }`}
+                        >
+                          {kind === 'all' ? 'All types' : kind === 'reservation' ? 'Reservations' : 'Walk-ins'}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {['all', 'completed', 'cancelled'].map((status) => (
+                        <button
+                          key={status}
+                          type="button"
+                          onClick={() => setHistoryStatusFilter(status as 'all' | HistoryStatus)}
+                          className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                            historyStatusFilter === status
+                              ? 'bg-[#1f5eff] text-white shadow-sm shadow-[#1f5eff]/20'
+                              : 'bg-[#f3f4f6] text-slate-700 hover:bg-[#e5e7eb]'
+                          }`}
+                        >
+                          {status === 'all' ? 'All statuses' : status === 'completed' ? 'Completed' : 'Cancelled'}
+                        </button>
+                      ))}
+                    </div>
+                    {historyKindFilter !== 'walkin' ? (
+                      <div className="flex flex-wrap gap-2">
+                        {[['all', 'All services'], ...Array.from(serviceLabelMap.entries())].map(([serviceId, label]) => (
+                          <button
+                            key={serviceId}
+                            type="button"
+                            onClick={() => setHistoryServiceFilter(serviceId)}
+                            className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                              historyServiceFilter === serviceId
+                                ? 'bg-[#1f5eff] text-white shadow-sm shadow-[#1f5eff]/20'
+                                : 'bg-[#f3f4f6] text-slate-700 hover:bg-[#e5e7eb]'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
                       </div>
-                    ))}
-                    {walkIns.slice(0, 6).map((walkin) => (
-                      <div key={walkin.id} className="rounded-[24px] border border-[#dbe2f0] bg-white p-4">
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{walkin.customerName}</p>
-                            <p className="mt-1 text-xs text-slate-500">{walkin.date} · {walkin.startTime}</p>
+                    ) : null}
+                  </div>
+                  <div className="mt-6">
+                    {historyGroups.length > 0 ? (
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {historyGroups.map(({ date, time, entries }) => (
+                          <div key={`${date}-${time}`} className="rounded-[32px] border border-[#ede2f0] bg-white p-5 shadow-sm">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{date}</p>
+                                <p className="mt-1 text-xs text-slate-500">{time}</p>
+                              </div>
+                              <span className="rounded-full bg-[#e7f5f1] px-3 py-1 text-xs font-semibold text-[#166d3b]">
+                                {entries.length} record{entries.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="mt-4 space-y-3">
+                              {entries.map((entry) => (
+                                <div key={entry.item.id} className="rounded-[24px] border border-[#dbe2f0] bg-[#f9fafb] p-4">
+                                  <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                      <p className="text-sm font-semibold text-slate-900">
+                                        {entry.kind === 'reservation'
+                                          ? entry.item.userName ?? entry.item.userId
+                                          : entry.item.customerName}
+                                      </p>
+                                      <p className="mt-1 text-xs text-slate-500">
+                                        {entry.kind === 'reservation'
+                                          ? serviceLabelMap.get(entry.item.serviceId ?? "") ?? entry.item.serviceId ?? "Service"
+                                          : entry.item.serviceName}
+                                      </p>
+                                    </div>
+                                    <div className="text-right">
+                                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                        entry.status === 'completed'
+                                          ? 'bg-[#dbeafe] text-[#1d4ed8]'
+                                          : 'bg-[#fee2e2] text-[#991b1b]'
+                                      }`}>
+                                        {entry.status}
+                                      </span>
+                                      <p className="mt-2 text-xs text-slate-500">
+                                        {entry.kind === 'reservation'
+                                          ? entry.item.unitName ?? entry.item.unitId ?? 'Unit'
+                                          : entry.item.unitName || 'Unit'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-slate-500">
+                                    <span>
+                                      {entry.kind === 'reservation'
+                                        ? `${entry.item.date} · ${entry.item.time}`
+                                        : `${entry.item.date} · ${entry.item.startTime} - ${entry.item.endTime}`
+                                      }
+                                    </span>
+                                    <span>{entry.kind === 'reservation' ? 'Reservation' : 'Walk-in'}</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <span className="rounded-full bg-[#e7f5f1] px-3 py-1 text-xs font-semibold text-[#166d3b]">Walk-in</span>
-                        </div>
-                        <p className="mt-3 text-sm text-slate-700">
-                          {walkin.serviceName} · {walkin.unitName || "No unit selected"}
-                        </p>
+                        ))}
                       </div>
-                    ))}
-                    {reservations.length === 0 && walkIns.length === 0 && (
-                      <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
-                        No booking history is available yet.
+                    ) : (
+                      <div className="rounded-[32px] border border-[#ede2f0] bg-[#fff7f2] p-6 text-slate-600">
+                        No history records match the filter.
                       </div>
                     )}
                   </div>
