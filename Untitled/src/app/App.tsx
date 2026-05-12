@@ -2,7 +2,6 @@
 import OrderingPage from "./components/OrderingPage";
 import ReservationPage from "./components/ReservationPage";
 import DesktopOrderingPage from "./components/DesktopOrderingPage";
-import DesktopReservationPage from "./components/DesktopReservationPage";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./components/RegisterPage";
 import AdminDashboardPage from "./components/AdminDashboardPage";
@@ -137,7 +136,7 @@ export default function App() {
       ) : currentPage === "ordering" ? (
         <DesktopOrderingPage onNavigateToReservation={navigateToReservation} onLogout={handleLogout} user={authUser} />
       ) : (
-        <DesktopReservationPage onNavigateBack={navigateToOrdering} />
+        <ReservationPage onNavigateBack={navigateToOrdering} />
       )}
     </div>
   );
