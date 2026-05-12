@@ -38,6 +38,13 @@ interface EditableProduct {
   imageUrl: string;
 }
 
+interface AdminSettings {
+  maintenanceMode: boolean;
+  allowGuestCheckout: boolean;
+  emailNotifications: boolean;
+  businessHours: string;
+  defaultCurrency: string;
+}
 
 const navItems = [
   { key: "calendar", label: "Calendar" },
@@ -124,6 +131,36 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [editingUnit, setEditingUnit] = useState<ReservationUnit | null>(null);
   const [reservations, setReservations] = useState<Reservation[]>([]);
   const [reservationUsers, setReservationUsers] = useState<User[]>([]);
+  const [adminSettings, setAdminSettings] = useState<AdminSettings>({
+    maintenanceMode: false,
+    allowGuestCheckout: true,
+    emailNotifications: true,
+    businessHours: "10:00 - 22:00",
+    defaultCurrency: "PHP",
+  });
+
+  useEffect(() => {
+    try {
+      const storedSettings = localStorage.getItem("admin_settings");
+      if (storedSettings) {
+        setAdminSettings(JSON.parse(storedSettings));
+      }
+    } catch (error) {
+      console.error("Failed to load admin settings:", error);
+    }
+  }, []);
+
+  const handleSettingChange = <K extends keyof AdminSettings>(key: K, value: AdminSettings[K]) => {
+    setAdminSettings((current) => {
+      const next = { ...current, [key]: value } as AdminSettings;
+      try {
+        localStorage.setItem("admin_settings", JSON.stringify(next));
+      } catch (error) {
+        console.error("Failed to save admin settings:", error);
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     // Set all products as visible by default when they load from the backend
@@ -457,6 +494,16 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                     ? "Online Ordering"
                     : activeSection === "calendar"
                     ? "Calendar Overview"
+                    : activeSection === "walkins"
+                    ? "Walk-ins"
+                    : activeSection === "charts"
+                    ? "Performance Charts"
+                    : activeSection === "history"
+                    ? "Booking History"
+                    : activeSection === "users"
+                    ? "User Management"
+                    : activeSection === "settings"
+                    ? "Admin Settings"
                     : "Reservations"}
                 </p>
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-slate-600">
@@ -464,6 +511,16 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                     ? "Publish customer products and manage which items are available for online ordering."
                     : activeSection === "calendar"
                     ? "Simple overview of all reserved slots for each date and time."
+                    : activeSection === "walkins"
+                    ? "Record same-day customers, payments, and table usage."
+                    : activeSection === "charts"
+                    ? "Monitor booking performance, service usage, and walk-in activity across the business."
+                    : activeSection === "history"
+                    ? "Review past reservations and walk-in records in a single timeline."
+                    : activeSection === "users"
+                    ? "Manage user accounts, roles, and customer information."
+                    : activeSection === "settings"
+                    ? "Set administrative preferences and business-level application options."
                     : "Track reserved rooms, guest counts, and booking windows for the function room and experience areas."}
                 </p>
               </div>
@@ -888,6 +945,214 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                         No walk-in records yet.
                       </div>
                     )}
+                  </div>
+                </div>
+              </section>
+            ) : activeSection === "charts" ? (
+              <section className="mt-8 space-y-6">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                    <p className="text-sm font-semibold text-slate-700">Total Reservations</p>
+                    <p className="mt-4 text-4xl font-bold text-slate-900">{reservations.length}</p>
+                  </div>
+                  <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                    <p className="text-sm font-semibold text-slate-700">Walk-In Visits</p>
+                    <p className="mt-4 text-4xl font-bold text-slate-900">{walkIns.length}</p>
+                  </div>
+                  <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                    <p className="text-sm font-semibold text-slate-700">Active Units</p>
+                    <p className="mt-4 text-4xl font-bold text-slate-900">{units.filter((unit) => unit.active).length}</p>
+                  </div>
+                  <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                    <p className="text-sm font-semibold text-slate-700">Customer Accounts</p>
+                    <p className="mt-4 text-4xl font-bold text-slate-900">{reservationUsers.length}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-6 lg:grid-cols-2">
+                  <div className="rounded-[32px] border border-[#ede2d0] bg-white p-6 shadow-sm">
+                    <p className="text-base font-semibold text-slate-900">Reservations by Service</p>
+                    <div className="mt-6 space-y-4">
+                      {unitCategories.map((category) => {
+                        const count = reservations.filter((reservation) => reservation.serviceId === category.id).length;
+                        const percentage = reservations.length ? Math.round((count / reservations.length) * 100) : 0;
+                        return (
+                          <div key={category.id}>
+                            <div className="flex items-center justify-between text-sm text-slate-700">
+                              <span>{category.label}</span>
+                              <span>{count}</span>
+                            </div>
+                            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[#edeef1]">
+                              <div className="h-full rounded-full bg-[#1f5eff]" style={{ width: `${percentage}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="rounded-[32px] border border-[#ede2d0] bg-white p-6 shadow-sm">
+                    <p className="text-base font-semibold text-slate-900">Walk-Ins & Reservations Trend</p>
+                    <div className="mt-6 space-y-4">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-700">Walk-Ins</p>
+                        <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#edeef1]">
+                          <div className="h-full rounded-full bg-[#0f9d58]" style={{ width: `${Math.min(100, walkIns.length * 10)}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-700">Upcoming Reservations</p>
+                        <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#edeef1]">
+                          <div className="h-full rounded-full bg-[#1f5eff]" style={{ width: `${Math.min(100, reservations.length * 10)}%` }} />
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-700">Active Units</p>
+                        <div className="mt-2 h-3 overflow-hidden rounded-full bg-[#edeef1]">
+                          <div className="h-full rounded-full bg-[#ff7a05]" style={{ width: `${Math.min(100, units.filter((unit) => unit.active).length * 10)}%` }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+            ) : activeSection === "history" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                  <p className="text-xl font-semibold text-slate-900">Recent Booking History</p>
+                  <div className="mt-6 space-y-4">
+                    {reservations.slice(0, 6).map((reservation) => (
+                      <div key={reservation.id} className="rounded-[24px] border border-[#dbe2f0] bg-white p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{reservation.userName ?? reservation.userId}</p>
+                            <p className="mt-1 text-xs text-slate-500">{reservation.date} · {reservation.time}</p>
+                          </div>
+                          <span className="rounded-full bg-[#eef2ff] px-3 py-1 text-xs font-semibold text-[#3730a3]">{reservation.status}</span>
+                        </div>
+                        <p className="mt-3 text-sm text-slate-700">
+                          {serviceLabelMap.get(reservation.serviceId ?? "") ?? reservation.serviceId ?? "Service"} · {reservation.unitName ?? reservation.unitId ?? "Unit"}
+                        </p>
+                      </div>
+                    ))}
+                    {walkIns.slice(0, 6).map((walkin) => (
+                      <div key={walkin.id} className="rounded-[24px] border border-[#dbe2f0] bg-white p-4">
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{walkin.customerName}</p>
+                            <p className="mt-1 text-xs text-slate-500">{walkin.date} · {walkin.startTime}</p>
+                          </div>
+                          <span className="rounded-full bg-[#e7f5f1] px-3 py-1 text-xs font-semibold text-[#166d3b]">Walk-in</span>
+                        </div>
+                        <p className="mt-3 text-sm text-slate-700">
+                          {walkin.serviceName} · {walkin.unitName || "No unit selected"}
+                        </p>
+                      </div>
+                    ))}
+                    {reservations.length === 0 && walkIns.length === 0 && (
+                      <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
+                        No booking history is available yet.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </section>
+            ) : activeSection === "users" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">Users</p>
+                      <p className="mt-2 text-sm text-slate-600">Review account roles, email, and registration details.</p>
+                    </div>
+                    <div className="rounded-full bg-[#e7f5f1] px-4 py-2 text-sm font-semibold text-[#166d3b]">
+                      {reservationUsers.length} users
+                    </div>
+                  </div>
+
+                  <div className="mt-6 overflow-x-auto">
+                    <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+                      <thead className="bg-[#f8f6f3] text-slate-500">
+                        <tr>
+                          <th className="px-4 py-3 font-semibold">Name</th>
+                          <th className="px-4 py-3 font-semibold">Email</th>
+                          <th className="px-4 py-3 font-semibold">Role</th>
+                          <th className="px-4 py-3 font-semibold">Created</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        {reservationUsers.map((userRecord) => (
+                          <tr key={userRecord.id}>
+                            <td className="px-4 py-4 text-slate-700">{userRecord.name}</td>
+                            <td className="px-4 py-4 text-slate-700">{userRecord.email}</td>
+                            <td className="px-4 py-4 text-slate-700">{userRecord.role}</td>
+                            <td className="px-4 py-4 text-slate-700">{new Date(userRecord.createdAt).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </section>
+            ) : activeSection === "settings" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                  <p className="text-xl font-semibold text-slate-900">Application Settings</p>
+                  <p className="mt-2 text-sm text-slate-600">Update admin preferences and business operating options.</p>
+
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Maintenance Mode</span>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={adminSettings.maintenanceMode}
+                          onChange={(e) => handleSettingChange("maintenanceMode", e.target.checked)}
+                          className="h-5 w-5 rounded border-slate-300 text-[#1f5eff]"
+                        />
+                        <span className="text-sm text-slate-600">Prevent new reservations while maintenance is enabled.</span>
+                      </div>
+                    </label>
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Guest Checkout</span>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={adminSettings.allowGuestCheckout}
+                          onChange={(e) => handleSettingChange("allowGuestCheckout", e.target.checked)}
+                          className="h-5 w-5 rounded border-slate-300 text-[#1f5eff]"
+                        />
+                        <span className="text-sm text-slate-600">Allow customers to reserve without registering.</span>
+                      </div>
+                    </label>
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Email Notifications</span>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={adminSettings.emailNotifications}
+                          onChange={(e) => handleSettingChange("emailNotifications", e.target.checked)}
+                          className="h-5 w-5 rounded border-slate-300 text-[#1f5eff]"
+                        />
+                        <span className="text-sm text-slate-600">Send email alerts for new reservations.</span>
+                      </div>
+                    </label>
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Business Hours</span>
+                      <input
+                        value={adminSettings.businessHours}
+                        onChange={(e) => handleSettingChange("businessHours", e.target.value)}
+                        className="mt-2 rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Default Currency</span>
+                      <input
+                        value={adminSettings.defaultCurrency}
+                        onChange={(e) => handleSettingChange("defaultCurrency", e.target.value)}
+                        className="mt-2 rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                      />
+                    </label>
                   </div>
                 </div>
               </section>
