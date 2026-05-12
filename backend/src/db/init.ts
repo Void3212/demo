@@ -29,10 +29,29 @@ export async function initializeDatabase() {
       password TEXT NOT NULL,
       name TEXT NOT NULL,
       phone TEXT,
-      role TEXT DEFAULT 'user' CHECK(role IN ('user', 'admin')),
+      address TEXT,
+      profileImage TEXT,
+      role TEXT DEFAULT 'customer' CHECK(role IN ('customer', 'admin')),
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     )
+  `);
+
+  const userInfo = await db.all<{ name: string }>(`PRAGMA table_info(users)`);
+  const userColumns = userInfo.map((column) => column.name);
+  if (!userColumns.includes('address')) {
+    await db.exec(`ALTER TABLE users ADD COLUMN address TEXT`);
+  }
+  if (!userColumns.includes('profileImage')) {
+    await db.exec(`ALTER TABLE users ADD COLUMN profileImage TEXT`);
+  }
+  if (!userColumns.includes('role')) {
+    await db.exec(`ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'customer' CHECK(role IN ('customer', 'admin'))`);
+  }
+
+  await db.exec(`
+    INSERT OR IGNORE INTO users (id, email, password, name, phone, address, profileImage, role, createdAt, updatedAt)
+    VALUES ('admin-0001', 'admin@chillingan.com', 'admin123', 'Chillingan Admin', '0000000000', 'Chillingan HQ', NULL, 'admin', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
   `);
 
   // Create reservations table
@@ -105,6 +124,28 @@ export async function initializeDatabase() {
       description TEXT NOT NULL,
       imageUrl TEXT NOT NULL,
       active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Create walk-ins table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS walkins (
+      id TEXT PRIMARY KEY,
+      date TEXT NOT NULL,
+      startTime TEXT NOT NULL,
+      endTime TEXT NOT NULL,
+      unitId TEXT,
+      unitName TEXT,
+      serviceId TEXT NOT NULL,
+      serviceName TEXT NOT NULL,
+      paymentAmount REAL NOT NULL,
+      amountReceived REAL NOT NULL,
+      changeAmount REAL NOT NULL,
+      paymentMethod TEXT NOT NULL,
+      customerName TEXT,
+      notes TEXT,
       createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
       updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
     )

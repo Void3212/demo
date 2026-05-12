@@ -112,7 +112,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     unitId: '',
     unitName: '',
     serviceId: 'billiard',
-    serviceName: '',
+    serviceName: 'Billiard',
     paymentAmount: 0,
     amountReceived: 0,
     changeAmount: 0,
@@ -342,23 +342,13 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       }
     };
 
-    const loadWalkIns = () => {
+    const loadWalkIns = async () => {
       try {
-        const storedWalkIns = localStorage.getItem('walkins');
-        if (storedWalkIns) {
-          const parsed = JSON.parse(storedWalkIns) as any[];
-          const normalized = parsed.map((walkin) => ({
-            amountReceived: walkin.amountReceived ?? walkin.paymentAmount ?? 0,
-            changeAmount:
-              walkin.changeAmount ?? Math.max(0, (walkin.amountReceived ?? walkin.paymentAmount ?? 0) - (walkin.paymentAmount ?? 0)),
-            ...walkin,
-          }));
-          setWalkIns(normalized);
-        } else {
-          setWalkIns([]);
-        }
+        const data = await ReservationAPI.getWalkins();
+        setWalkIns(data);
       } catch (error) {
         console.error('Failed to load walk-ins:', error);
+        setWalkIns([]);
       }
     };
 
@@ -374,22 +364,13 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     const intervalId = window.setInterval(refresh, 10000);
     window.addEventListener('focus', refresh);
 
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'walkins') {
-        loadWalkIns();
-      }
-    };
-
-    window.addEventListener('storage', handleStorage);
-
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refresh);
-      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 
-  const handleAddWalkIn = () => {
+  const handleAddWalkIn = async () => {
     if (!newWalkIn.customerName.trim() || !newWalkIn.paymentAmount || !newWalkIn.amountReceived) {
       alert('Please enter customer name, payment amount, and the amount received.');
       return;
@@ -415,17 +396,29 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       return;
     }
 
-    const walkin: WalkIn = {
-      id: `walkin-${Date.now()}`,
-      ...newWalkIn,
-      changeAmount: Math.max(0, newWalkIn.amountReceived - newWalkIn.paymentAmount),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      const createdWalkIn = await ReservationAPI.createWalkin({
+        date: newWalkIn.date,
+        startTime: newWalkIn.startTime,
+        endTime: newWalkIn.endTime,
+        unitId: newWalkIn.unitId,
+        unitName: newWalkIn.unitName,
+        serviceId: newWalkIn.serviceId,
+        serviceName: newWalkIn.serviceName || unitCategories.find((cat) => cat.id === newWalkIn.serviceId)?.label || '',
+        paymentAmount: newWalkIn.paymentAmount,
+        amountReceived: newWalkIn.amountReceived,
+        changeAmount: Math.max(0, newWalkIn.amountReceived - newWalkIn.paymentAmount),
+        paymentMethod: newWalkIn.paymentMethod,
+        customerName: newWalkIn.customerName,
+        notes: newWalkIn.notes,
+      });
 
-    const updatedWalkIns = [...walkIns, walkin];
-    setWalkIns(updatedWalkIns);
-    localStorage.setItem('walkins', JSON.stringify(updatedWalkIns));
+      setWalkIns((prev) => [...prev, createdWalkIn]);
+    } catch (error: any) {
+      console.error('Failed to create walk-in:', error);
+      alert(`Failed to record walk-in: ${error?.message || 'Please try again.'}`);
+      return;
+    }
 
     // Reset form
     setNewWalkIn({
@@ -445,11 +438,15 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     });
   };
 
-  const handleDeleteWalkIn = (id: string) => {
-    if (confirm('Delete this walk-in record?')) {
-      const updatedWalkIns = walkIns.filter(w => w.id !== id);
-      setWalkIns(updatedWalkIns);
-      localStorage.setItem('walkins', JSON.stringify(updatedWalkIns));
+  const handleDeleteWalkIn = async (id: string) => {
+    if (!confirm('Delete this walk-in record?')) return;
+
+    try {
+      await ReservationAPI.deleteWalkin(id);
+      setWalkIns((prev) => prev.filter((w) => w.id !== id));
+    } catch (error) {
+      console.error('Failed to delete walk-in:', error);
+      alert('Failed to delete walk-in. Please try again.');
     }
   };
 

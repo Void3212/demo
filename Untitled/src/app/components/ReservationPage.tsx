@@ -86,16 +86,13 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       }
     };
 
-    const loadWalkIns = () => {
+    const loadWalkIns = async () => {
       try {
-        const storedWalkIns = localStorage.getItem('walkins');
-        if (storedWalkIns) {
-          setWalkIns(JSON.parse(storedWalkIns));
-        } else {
-          setWalkIns([]);
-        }
+        const data = await ReservationAPI.getWalkins();
+        setWalkIns(data);
       } catch (error) {
         console.error("Failed to load walk-ins:", error);
+        setWalkIns([]);
       }
     };
 
@@ -116,20 +113,12 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       loadWalkIns();
     };
 
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === 'walkins') {
-        loadWalkIns();
-      }
-    };
-
     const intervalId = window.setInterval(refresh, 10000);
     window.addEventListener('focus', refresh);
-    window.addEventListener('storage', handleStorage);
 
     return () => {
       window.clearInterval(intervalId);
       window.removeEventListener('focus', refresh);
-      window.removeEventListener('storage', handleStorage);
     };
   }, []);
 

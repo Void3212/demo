@@ -41,7 +41,7 @@ export class ReservationService {
       await this.db.run(
         `INSERT INTO users (id, email, password, name, role, createdAt, updatedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [userId, email, 'local-user', 'Guest', 'user', now, now]
+        [userId, email, 'local-user', 'Guest', 'customer', now, now]
       );
     }
   }

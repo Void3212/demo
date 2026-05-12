@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { type User } from "../data/users";
+import { type User, setCurrentUser } from "../data/users";
+import { UserAPI } from "../../api/userAPI";
 
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
@@ -16,8 +17,8 @@ export default function LoginPage({ onLoginSuccess, onNavigateToRegister }: Logi
     setError(null);
 
     try {
-      const { loginUser } = await import("../data/users");
-      const user = loginUser(email, password);
+      const user = await UserAPI.loginUser(email, password);
+      setCurrentUser(user);
       onLoginSuccess(user);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to log in.");

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { type User } from "../data/users";
+import { UserAPI } from "../../api/userAPI";
 
 interface RegisterPageProps {
   onNavigateToLogin: () => void;
@@ -44,8 +44,7 @@ export default function RegisterPage({ onNavigateToLogin }: RegisterPageProps) {
     }
 
     try {
-      const { registerUser } = await import("../data/users");
-      registerUser({ name, email, password, phone, address, profileImage });
+      await UserAPI.registerUser({ name, email, password, phone, address, profileImage });
       onNavigateToLogin();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to register.");

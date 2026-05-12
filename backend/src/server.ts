@@ -6,6 +6,8 @@ import { createReservationRoutes } from './routes/reservations.js';
 import { createProductRoutes } from './routes/products.js';
 import { createReservationUnitRoutes } from './routes/reservationUnits.js';
 import { createAdminSettingsRoutes } from './routes/adminSettings.js';
+import { createWalkInRoutes } from './routes/walkins.js';
+import { createUserRoutes } from './routes/users.js';
 
 dotenv.config();
 
@@ -38,6 +40,8 @@ async function startServer() {
     app.use('/api/products', createProductRoutes(db));
     app.use('/api/reservation-units', createReservationUnitRoutes(db));
     app.use('/api/admin-settings', createAdminSettingsRoutes(db));
+    app.use('/api/walkins', createWalkInRoutes(db));
+    app.use('/api/users', createUserRoutes(db));
 
     // Health check endpoint
     app.get('/api/health', (req, res) => {

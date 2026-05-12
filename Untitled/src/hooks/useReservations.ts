@@ -126,7 +126,7 @@ export function useReservations(options: UseReservationsOptions = {}): UseReserv
     if (autoFetch && userId) {
       refetch();
     }
-  }, [userId, autoFetch, refetch]);
+  }, [autoFetch, userId, refetch]);
 
   return {
     reservations,
