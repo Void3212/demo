@@ -96,6 +96,20 @@ export async function initializeDatabase() {
     )
   `);
 
+  // Create reservation_units table
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS reservation_units (
+      id TEXT PRIMARY KEY,
+      serviceId TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      imageUrl TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0, 1)),
+      createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
   // Create indices for faster queries
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_reservations_userId ON reservations(userId);
@@ -105,9 +119,12 @@ export async function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
     CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
     CREATE INDEX IF NOT EXISTS idx_products_visible ON products(visible);
+    CREATE INDEX IF NOT EXISTS idx_reservation_units_serviceId ON reservation_units(serviceId);
+    CREATE INDEX IF NOT EXISTS idx_reservation_units_active ON reservation_units(active);
   `);
 
   await seedProducts(db);
+  await seedReservationUnits(db);
 
   console.log('✓ Database initialized successfully');
   return db;
@@ -1313,6 +1330,140 @@ async function seedProducts(db: Database<sqlite3.Database, sqlite3.Statement>) {
   }
 
   console.log(`✓ Seeded ${products.length} menu products into the database`);
+}
+
+async function seedReservationUnits(db: Database<sqlite3.Database, sqlite3.Statement>) {
+  const row = await db.get<{ count: number }>(`SELECT COUNT(*) AS count FROM reservation_units`);
+  if (row?.count && row.count > 0) {
+    return;
+  }
+
+  const units = [
+    {
+      id: "billiard-1",
+      serviceId: "billiard",
+      name: "Table 1",
+      description: "Corner table with soft lighting.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Table+1",
+      active: 1,
+    },
+    {
+      id: "billiard-2",
+      serviceId: "billiard",
+      name: "Table 2",
+      description: "Center pool table with premium cues.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Table+2",
+      active: 1,
+    },
+    {
+      id: "billiard-3",
+      serviceId: "billiard",
+      name: "Table 3",
+      description: "Large table with private seating.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Table+3",
+      active: 1,
+    },
+    {
+      id: "billiard-4",
+      serviceId: "billiard",
+      name: "Table 4",
+      description: "Cozy table near the bar.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Table+4",
+      active: 1,
+    },
+    {
+      id: "karaoke-1",
+      serviceId: "karaoke",
+      name: "Room 1",
+      description: "Private room for 8 guests.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Karaoke+1",
+      active: 1,
+    },
+    {
+      id: "karaoke-2",
+      serviceId: "karaoke",
+      name: "Room 2",
+      description: "Stage lighting and sound system.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Karaoke+2",
+      active: 1,
+    },
+    {
+      id: "karaoke-3",
+      serviceId: "karaoke",
+      name: "Room 3",
+      description: "Large seating lounge.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Karaoke+3",
+      active: 1,
+    },
+    {
+      id: "darts-1",
+      serviceId: "darts",
+      name: "Board 1",
+      description: "Regulation electronic board.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Darts+1",
+      active: 1,
+    },
+    {
+      id: "darts-2",
+      serviceId: "darts",
+      name: "Board 2",
+      description: "Premium scoring system.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Darts+2",
+      active: 1,
+    },
+    {
+      id: "darts-3",
+      serviceId: "darts",
+      name: "Board 3",
+      description: "Cozy corner layout.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Darts+3",
+      active: 1,
+    },
+    {
+      id: "basketball-1",
+      serviceId: "basketball",
+      name: "Court 1",
+      description: "Half-court with hoops.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Court+1",
+      active: 1,
+    },
+    {
+      id: "basketball-2",
+      serviceId: "basketball",
+      name: "Court 2",
+      description: "Full-court arcade experience.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Court+2",
+      active: 1,
+    },
+    {
+      id: "function-1",
+      serviceId: "function-room",
+      name: "Function Room",
+      description: "Private event room with seating.",
+      imageUrl: "https://via.placeholder.com/320x220.png?text=Function+Room",
+      active: 1,
+    },
+  ];
+
+  for (const unit of units) {
+    const now = new Date().toISOString();
+    await db.run(
+      `INSERT INTO reservation_units (id, serviceId, name, description, imageUrl, active, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        unit.id,
+        unit.serviceId,
+        unit.name,
+        unit.description,
+        unit.imageUrl,
+        unit.active,
+        now,
+        now,
+      ]
+    );
+  }
+
+  console.log(`✓ Seeded ${units.length} reservation units into the database`);
 }
 
 if (pathToFileURL(process.argv[1]).href === import.meta.url) {

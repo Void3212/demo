@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type Product, type ProductCategory } from "../data/products";
 import { type User, getUsers } from "../data/users";
 import { useReservationUnits } from "../../hooks/useReservationUnits";
-import { ReservationAPI, type Reservation } from "../../api/reservationAPI";
+import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reservationAPI";
 import {
   type ReservationServiceCategory,
   type ReservationUnit,
@@ -42,6 +42,7 @@ interface EditableProduct {
 const navItems = [
   { key: "calendar", label: "Calendar" },
   { key: "schedule", label: "Reservations" },
+  { key: "walkins", label: "Walk-ins" },
   { key: "onlineOrdering", label: "Online Ordering" },
   { key: "charts", label: "Charts" },
   { key: "history", label: "History" },
@@ -94,6 +95,20 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [categoryFilter, setCategoryFilter] = useState<ProductCategory | "All">("All");
   const [newProduct, setNewProduct] = useState<EditableProduct>(emptyEditableProduct);
   const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
+  const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
+  const [newWalkIn, setNewWalkIn] = useState({
+    date: new Date().toISOString().split('T')[0],
+    startTime: '09:00',
+    endTime: '10:00',
+    unitId: '',
+    unitName: '',
+    serviceId: 'billiard',
+    serviceName: '',
+    paymentAmount: 0,
+    paymentMethod: 'cash' as const,
+    customerName: '',
+    notes: '',
+  });
 
   const { products: productList, addProduct, updateProduct: updateProductBackend, toggleVisibility, loading } = useProducts({ autoFetch: true });
 
@@ -162,6 +177,59 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     setReservationUsers(getUsers());
   }, []);
 
+  // Load walk-ins from localStorage
+  useEffect(() => {
+    try {
+      const storedWalkIns = localStorage.getItem('walkins');
+      if (storedWalkIns) {
+        setWalkIns(JSON.parse(storedWalkIns));
+      }
+    } catch (error) {
+      console.error('Failed to load walk-ins:', error);
+    }
+  }, []);
+
+  const handleAddWalkIn = () => {
+    if (!newWalkIn.customerName.trim() || !newWalkIn.paymentAmount) {
+      alert('Please enter customer name and payment amount');
+      return;
+    }
+
+    const walkin: WalkIn = {
+      id: `walkin-${Date.now()}`,
+      ...newWalkIn,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    const updatedWalkIns = [...walkIns, walkin];
+    setWalkIns(updatedWalkIns);
+    localStorage.setItem('walkins', JSON.stringify(updatedWalkIns));
+
+    // Reset form
+    setNewWalkIn({
+      date: new Date().toISOString().split('T')[0],
+      startTime: '09:00',
+      endTime: '10:00',
+      unitId: '',
+      unitName: '',
+      serviceId: 'billiard',
+      serviceName: '',
+      paymentAmount: 0,
+      paymentMethod: 'cash',
+      customerName: '',
+      notes: '',
+    });
+  };
+
+  const handleDeleteWalkIn = (id: string) => {
+    if (confirm('Delete this walk-in record?')) {
+      const updatedWalkIns = walkIns.filter(w => w.id !== id);
+      setWalkIns(updatedWalkIns);
+      localStorage.setItem('walkins', JSON.stringify(updatedWalkIns));
+    }
+  };
+
   const filteredReservations = useMemo(
     () => reservations.filter((reservation) => reservation.serviceId === selectedUnitCategory),
     [reservations, selectedUnitCategory],
@@ -170,7 +238,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const calendarGroups = useMemo(() => {
     const groups = new Map<string, { date: string; time: string; reservations: Reservation[] }>();
 
-    filteredReservations.forEach((reservation) => {
+    reservations.forEach((reservation) => {
       const date = reservation.date ?? "Unknown date";
       const time = reservation.time ?? "Unknown time";
       const key = `${date}||${time}`;
@@ -189,10 +257,15 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       }
       return a.date.localeCompare(b.date);
     });
-  }, [filteredReservations]);
+  }, [reservations]);
 
   const unitCategoryOptions = useMemo(
     () => unitCategories.map((category) => ({ id: category.id, label: category.label })),
+    [unitCategories]
+  );
+
+  const serviceLabelMap = useMemo(
+    () => new Map(unitCategories.map((category) => [category.id, category.label])),
     [unitCategories]
   );
 
@@ -212,25 +285,29 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     setUnitForm((current) => ({ ...current, [field]: value }));
   };
 
-  const handleSaveUnit = () => {
+  const handleSaveUnit = async () => {
     if (!unitForm.name.trim() || !unitForm.imageUrl.trim()) {
       alert('Please add a unit name and image before saving.');
       return;
     }
 
-    if (editingUnit) {
-      updateUnit(editingUnit.id, {
-        ...unitForm,
-      });
-      setEditingUnit(null);
-    } else {
-      addUnit({
-        ...unitForm,
-        id: `unit-${Date.now()}`,
-      });
-    }
+    try {
+      if (editingUnit) {
+        await updateUnit(editingUnit.id, {
+          ...unitForm,
+        });
+        setEditingUnit(null);
+      } else {
+        await addUnit({
+          ...unitForm,
+          id: `unit-${Date.now()}`,
+        });
+      }
 
-    setUnitForm(emptyReservationUnit);
+      setUnitForm(emptyReservationUnit);
+    } catch (error) {
+      alert('Failed to save unit. Please try again.');
+    }
   };
 
   const handleEditUnit = (unit: ReservationUnit) => {
@@ -243,9 +320,13 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     setUnitForm(emptyReservationUnit);
   };
 
-  const handleDeleteUnit = (unitId: string) => {
+  const handleDeleteUnit = async (unitId: string) => {
     if (confirm('Remove this reservation unit?')) {
-      deleteUnit(unitId);
+      try {
+        await deleteUnit(unitId);
+      } catch (error) {
+        alert('Failed to delete unit. Please try again.');
+      }
     }
   };
 
@@ -390,7 +471,11 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                 <div className="rounded-[24px] bg-[#f5f7ff] px-4 py-3 text-sm font-semibold text-[#2b54a3]">
                   Mon 05/12
                 </div>
-                <button className="rounded-[24px] bg-[#1f5eff] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#1f5eff]/20">
+                <button
+                  type="button"
+                  onClick={() => setActiveSection("walkins")}
+                  className="rounded-[24px] bg-[#1f5eff] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#1f5eff]/20"
+                >
                   Create
                 </button>
                 <div className="relative min-w-[220px]">
@@ -629,6 +714,9 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                               <p className="mt-1 text-xs text-slate-500">
                                 {reservation.unitName ?? reservation.unitId ?? "Unknown location"}
                               </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {serviceLabelMap.get(reservation.serviceId ?? "") ?? reservation.serviceId ?? "Unknown service"}
+                              </p>
                               <p className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
                                 <span>Party: {reservation.partySize ?? "—"}</span>
                                 <span className="rounded-full bg-[#eef2ff] px-2 py-1 text-[#3730a3]">{reservation.status}</span>
@@ -643,6 +731,164 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                       No reservations found for the calendar overview.
                     </div>
                   )}
+                </div>
+              </section>
+            ) : activeSection === "walkins" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
+                  <h2 className="text-2xl font-semibold text-slate-900">Create Walk-In Record</h2>
+                  <div className="mt-6 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Customer Name</label>
+                      <input
+                        type="text"
+                        value={newWalkIn.customerName}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, customerName: e.target.value})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05] focus:ring-2 focus:ring-[#ffdcc6]/70"
+                        placeholder="Enter customer name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Date</label>
+                      <input
+                        type="date"
+                        value={newWalkIn.date}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, date: e.target.value})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05] focus:ring-2 focus:ring-[#ffdcc6]/70"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Service</label>
+                      <select
+                        value={newWalkIn.serviceId}
+                        onChange={(e) => {
+                          const selected = unitCategories.find(cat => cat.id === e.target.value);
+                          setNewWalkIn({...newWalkIn, serviceId: e.target.value, serviceName: selected?.label || ''});
+                        }}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                      >
+                        {unitCategories.map((cat) => (
+                          <option key={cat.id} value={cat.id}>{cat.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Unit</label>
+                      <select
+                        value={newWalkIn.unitId}
+                        onChange={(e) => {
+                          const selected = units.find(u => u.id === e.target.value);
+                          setNewWalkIn({...newWalkIn, unitId: e.target.value, unitName: selected?.name || ''});
+                        }}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                      >
+                        <option value="">Select unit</option>
+                        {units.filter(u => u.serviceId === newWalkIn.serviceId).map((unit) => (
+                          <option key={unit.id} value={unit.id}>{unit.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Start Time</label>
+                      <input
+                        type="time"
+                        value={newWalkIn.startTime}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, startTime: e.target.value})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">End Time</label>
+                      <input
+                        type="time"
+                        value={newWalkIn.endTime}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, endTime: e.target.value})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Payment Amount (₱)</label>
+                      <input
+                        type="number"
+                        value={newWalkIn.paymentAmount}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, paymentAmount: Number(e.target.value)})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                        placeholder="0"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700">Payment Method</label>
+                      <select
+                        value={newWalkIn.paymentMethod}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, paymentMethod: e.target.value as any})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                      >
+                        <option value="cash">Cash</option>
+                        <option value="card">Card</option>
+                        <option value="gcash">GCash</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-sm font-semibold text-slate-700">Notes</label>
+                      <textarea
+                        value={newWalkIn.notes}
+                        onChange={(e) => setNewWalkIn({...newWalkIn, notes: e.target.value})}
+                        className="mt-2 w-full rounded-[24px] border border-slate-200 bg-white px-4 py-3 text-slate-900 outline-none focus:border-[#ff7a05]"
+                        placeholder="Any additional notes..."
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddWalkIn}
+                    className="mt-6 rounded-full bg-[#ff7a05] px-6 py-3 font-semibold text-white shadow-[0_10px_30px_rgba(255,122,5,0.16)] hover:bg-[#e64b12]"
+                  >
+                    Record Walk-In
+                  </button>
+                </div>
+
+                <div className="space-y-4">
+                  <h2 className="text-2xl font-semibold text-slate-900">Walk-In Records</h2>
+                  <div className="grid gap-4">
+                    {walkIns.length > 0 ? (
+                      walkIns.map((walkin) => (
+                        <div key={walkin.id} className="rounded-[32px] border border-[#ede2d0] bg-white p-5">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-slate-900">{walkin.customerName}</p>
+                              <p className="mt-1 text-xs text-slate-500">{walkin.date} | {walkin.startTime} - {walkin.endTime}</p>
+                              <p className="mt-2 text-sm text-slate-700">
+                                <span className="font-semibold">{walkin.serviceName}</span>
+                                {walkin.unitName && <span> - {walkin.unitName}</span>}
+                              </p>
+                              <div className="mt-3 flex flex-wrap gap-3">
+                                <span className="rounded-full bg-[#fff0e3] px-3 py-1 text-sm font-semibold text-[#b7501f]">
+                                  ₱{walkin.paymentAmount}
+                                </span>
+                                <span className="rounded-full bg-[#eef2ff] px-3 py-1 text-sm font-semibold text-[#3730a3]">
+                                  {walkin.paymentMethod}
+                                </span>
+                              </div>
+                              {walkin.notes && <p className="mt-2 text-xs text-slate-500">Note: {walkin.notes}</p>}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteWalkIn(walkin.id)}
+                              className="rounded-full bg-[#fecaca] px-4 py-2 text-sm font-semibold text-[#9f2a2c] hover:bg-[#fda8a8]"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
+                        No walk-in records yet.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </section>
             ) : (

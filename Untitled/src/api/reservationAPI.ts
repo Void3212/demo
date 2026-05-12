@@ -16,6 +16,23 @@ export interface Reservation {
   updatedAt: string;
 }
 
+export interface WalkIn {
+  id: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  unitId?: string;
+  unitName?: string;
+  serviceId: string;
+  serviceName: string;
+  paymentAmount: number;
+  paymentMethod: 'cash' | 'card' | 'gcash' | 'other';
+  customerName?: string;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export class ReservationAPI {
   static async createReservation(userId: string, data: {
     date: string;
@@ -97,5 +114,53 @@ export class ReservationAPI {
 
     const data = await response.json();
     return data.available;
+  }
+
+  // Walk-in methods
+  static async createWalkin(data: {
+    date: string;
+    startTime: string;
+    endTime: string;
+    unitId?: string;
+    unitName?: string;
+    serviceId: string;
+    serviceName: string;
+    paymentAmount: number;
+    paymentMethod: 'cash' | 'card' | 'gcash' | 'other';
+    customerName?: string;
+    notes?: string;
+  }): Promise<WalkIn> {
+    const response = await fetch(`${API_URL}/walkins`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to create walk-in');
+    }
+
+    return response.json();
+  }
+
+  static async getWalkins(): Promise<WalkIn[]> {
+    const response = await fetch(`${API_URL}/walkins`);
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch walk-ins');
+    }
+
+    return response.json();
+  }
+
+  static async deleteWalkin(id: string): Promise<void> {
+    const response = await fetch(`${API_URL}/walkins/${id}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to delete walk-in');
+    }
   }
 }

@@ -680,7 +680,6 @@ function Home({ searchQuery, setSearchQuery, selectedCategory, setSelectedCatego
           <circle cx="2" cy="2" fill="var(--fill-0, white)" id="Ellipse 6" r="2" />
         </svg>
       </div>
-      <Group19 />
       <Frame1 searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
       <div className="absolute h-[132px] left-[9px] top-[24px] w-[198px]" data-name="Chillingan Header">
         <img alt="" className="absolute inset-0 max-w-none mix-blend-darken object-cover pointer-events-none size-full" src={imgChillinganHeader} />

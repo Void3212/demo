@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import { useReservationUnits } from "../../hooks/useReservationUnits";
-import { ReservationAPI, type Reservation } from "../../api/reservationAPI";
+import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reservationAPI";
 import { type User } from "../data/users";
 
 interface ReservationPageProps {
@@ -34,6 +34,7 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [paymentMethod, setPaymentMethod] = useState<string>("visa");
   const [allReservations, setAllReservations] = useState<Reservation[]>([]);
+  const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
 
@@ -48,6 +49,17 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
     }
   }, [items, selectedItem]);
 
+  // Helper function to check if a time slot overlaps with any walk-in
+  const getWalkInForSlot = (slot: string): WalkIn | undefined => {
+    return walkIns.find((walkin) => {
+      if (walkin.date !== selectedDate || walkin.unitId !== selectedItem) return false;
+      const slotHour = parseInt(slot.split(':')[0], 10);
+      const startHour = parseInt(walkin.startTime.split(':')[0], 10);
+      const endHour = parseInt(walkin.endTime.split(':')[0], 10);
+      return slotHour >= startHour && slotHour < endHour;
+    });
+  };
+
   const reservedSlotMap = useMemo(
     () =>
       new Map(
@@ -59,6 +71,7 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
   );
 
   const selectedSlotReservation = reservedSlotMap.get(selectedSlot);
+  const selectedSlotWalkIn = getWalkInForSlot(selectedSlot);
 
   useEffect(() => {
     const loadReservations = async () => {
@@ -70,11 +83,25 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
       }
     };
 
+    // Load walk-ins from localStorage
+    try {
+      const storedWalkIns = localStorage.getItem('walkins');
+      if (storedWalkIns) {
+        setWalkIns(JSON.parse(storedWalkIns));
+      }
+    } catch (error) {
+      console.error("Failed to load walk-ins:", error);
+    }
+
     loadReservations();
   }, []);
 
   const handleReserve = async () => {
-    if (!selectedItem || reservedSlotMap.has(selectedSlot)) {
+    const activeWalkIn = getWalkInForSlot(selectedSlot);
+    if (!selectedItem || reservedSlotMap.has(selectedSlot) || activeWalkIn) {
+      if (activeWalkIn) {
+        setReservationError("This slot is blocked by a walk-in and is not available for reservation.");
+      }
       return;
     }
 
@@ -242,18 +269,23 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
               const reservation = reservedSlotMap.get(slot);
               const isReserved = Boolean(reservation);
               const isReservedByCurrentUser = reservation?.userId === user.id;
-              const isSelected = selectedSlot === slot && !isReserved;
+              const walkIn = getWalkInForSlot(slot);
+              const isBlockedByWalkIn = Boolean(walkIn);
+              const isDisabled = isReserved || isBlockedByWalkIn;
+              const isSelected = selectedSlot === slot && !isDisabled;
               return (
                 <button
                   key={slot}
                   type="button"
-                  onClick={() => !isReserved && setSelectedSlot(slot)}
-                  disabled={isReserved}
+                  onClick={() => !isDisabled && setSelectedSlot(slot)}
+                  disabled={isDisabled}
                   className={`flex items-center justify-between rounded-[28px] border px-4 py-4 text-left text-sm font-semibold transition duration-200 ${
                     isReservedByCurrentUser
                       ? "border-[#34a853] bg-[#e7f7eb] text-[#1d6f30]"
                       : isReserved
                       ? "border-[#d71f2a] bg-[#fdecea] text-[#9f2a2c]"
+                      : isBlockedByWalkIn
+                      ? "border-[#d97706] bg-[#fff7e0] text-[#92400e]"
                       : isSelected
                       ? "border-[#ff7a05] bg-[#fff3e8] text-[#963f08] shadow-[0_12px_30px_rgba(255,122,5,0.16)]"
                       : "border-slate-200 bg-white text-slate-900 hover:border-[#ff7a05]"
@@ -266,10 +298,18 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                         ? "bg-[#dcf5d8] text-[#1e682f]"
                         : isReserved
                         ? "bg-[#fecaca] text-[#9f2a2c]"
+                        : isBlockedByWalkIn
+                        ? "bg-[#ffe4b5] text-[#92400e]"
                         : "bg-[#ffedd5] text-[#b7501f]"
                     }`}
                   >
-                    {isReservedByCurrentUser ? "Your reservation" : isReserved ? "Taken" : "Open"}
+                    {isReservedByCurrentUser
+                      ? "Your reservation"
+                      : isReserved
+                      ? "Taken"
+                      : isBlockedByWalkIn
+                      ? "Walk-in"
+                      : "Open"}
                   </span>
                 </button>
               );
@@ -305,6 +345,8 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                     ? selectedSlotReservation.userId === user.id
                       ? "Reserved by you"
                       : "Taken"
+                    : selectedSlotWalkIn
+                    ? "Blocked by walk-in"
                     : "Available"}
                 </p>
               </div>
@@ -345,10 +387,16 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
 
             <button
               onClick={handleReserve}
-              disabled={isSubmitting || reservedSlotMap.has(selectedSlot)}
+              disabled={isSubmitting || reservedSlotMap.has(selectedSlot) || Boolean(selectedSlotWalkIn)}
               className="mt-5 w-full rounded-[28px] bg-[#ff7a05] px-6 py-4 text-sm font-semibold text-white shadow-[0_18px_45px_rgba(255,122,5,0.22)] transition hover:bg-[#e66b00] disabled:cursor-not-allowed disabled:bg-[#f1c3a0]"
             >
-              {reservedSlotMap.has(selectedSlot) ? "Slot reserved" : isSubmitting ? "Reserving..." : "Reserve now"}
+              {selectedSlotWalkIn
+                ? "Walk-in occupied"
+                : reservedSlotMap.has(selectedSlot)
+                ? "Slot reserved"
+                : isSubmitting
+                ? "Reserving..."
+                : "Reserve now"}
             </button>
           </div>
         </aside>

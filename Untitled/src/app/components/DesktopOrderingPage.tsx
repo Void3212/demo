@@ -149,7 +149,7 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
                                     onClick={() => handleItemQuantityChange(item.product.id, 1)}
                                     className="px-3 py-2 hover:bg-slate-100"
                                   >
-                                    +
+                                    Add
                                   </button>
                                 </div>
                                 <span className="text-sm font-semibold">₱{(item.product.price * item.quantity).toFixed(0)}</span>

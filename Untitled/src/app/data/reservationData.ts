@@ -13,6 +13,8 @@ export interface ReservationUnit {
   description: string;
   imageUrl: string;
   active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 const STORAGE_KEY = "chillingan-reservation-units";

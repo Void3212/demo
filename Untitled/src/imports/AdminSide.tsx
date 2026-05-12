@@ -753,39 +753,6 @@ function Frame1({ searchQuery, setSearchQuery, user }: { searchQuery: string; se
   );
 }
 
-function Group13() {
-  return (
-    <div className="absolute left-[1532px] size-[75px] top-[776px]">
-      <div className="absolute inset-[-21.33%_-28%_-34.67%_-28%]">
-        <svg className="block size-full" fill="none" preserveAspectRatio="none" viewBox="0 0 117 117">
-          <g id="Group 122">
-            <g filter="url(#filter0_d_1_389)" id="Ellipse 8">
-              <circle cx="58.5" cy="53.5" fill="var(--fill-0, #FF7A05)" r="37.5" />
-            </g>
-            <g id="Group 18">
-              <path d="M43 52.9999H73" id="Line 1" stroke="var(--stroke-0, white)" strokeLinecap="round" strokeWidth="5" />
-              <path d="M58 68V38" id="Line 2" stroke="var(--stroke-0, white)" strokeLinecap="round" strokeWidth="5" />
-            </g>
-          </g>
-          <defs>
-            <filter colorInterpolationFilters="sRGB" filterUnits="userSpaceOnUse" height="117" id="filter0_d_1_389" width="117" x="0" y="0">
-              <feFlood floodOpacity="0" result="BackgroundImageFix" />
-              <feColorMatrix in="SourceAlpha" result="hardAlpha" type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0" />
-              <feMorphology in="SourceAlpha" operator="dilate" radius="5" result="effect1_dropShadow_1_389" />
-              <feOffset dy="5" />
-              <feGaussianBlur stdDeviation="8" />
-              <feComposite in2="hardAlpha" operator="out" />
-              <feColorMatrix type="matrix" values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.4 0" />
-              <feBlend in2="BackgroundImageFix" mode="normal" result="effect1_dropShadow_1_389" />
-              <feBlend in="SourceGraphic" in2="effect1_dropShadow_1_389" mode="normal" result="shape" />
-            </filter>
-          </defs>
-        </svg>
-      </div>
-    </div>
-  );
-}
-
 function Group() {
   return (
     <div className="absolute inset-[0.01%_0_0_0]" data-name="Group">
@@ -1041,7 +1008,6 @@ export default function AdminSide({ onProductSelect, onCartClick, onLogout, user
         </div>
       </div>
       <Frame1 searchQuery={searchQuery} setSearchQuery={setSearchQuery} user={profileUser} />
-      <Group13 />
         </>
       )}
       <button
