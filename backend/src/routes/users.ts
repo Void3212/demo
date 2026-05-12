@@ -48,6 +48,16 @@ export function createUserRoutes(db: Database<sqlite3.Database, sqlite3.Statemen
     }
   });
 
+  router.get('/', async (_req: Request, res: Response) => {
+    try {
+      const users = await userService.getAllUsers();
+      res.json(users);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      res.status(500).json({ error: 'Failed to fetch users' });
+    }
+  });
+
   router.get('/:id', async (req: Request, res: Response) => {
     try {
       const user = await userService.getUserById(req.params.id);

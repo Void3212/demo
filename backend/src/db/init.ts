@@ -37,8 +37,8 @@ export async function initializeDatabase() {
     )
   `);
 
-  const userInfo = await db.all<{ name: string }>(`PRAGMA table_info(users)`);
-  const userColumns = userInfo.map((column) => column.name);
+  const userInfo = (await db.all<{ name: string }>(`PRAGMA table_info(users)`)) as unknown as { name: string }[];
+  const userColumns = (userInfo || []).map((column) => column.name);
   if (!userColumns.includes('address')) {
     await db.exec(`ALTER TABLE users ADD COLUMN address TEXT`);
   }
@@ -73,8 +73,8 @@ export async function initializeDatabase() {
     )
   `);
 
-  const reservationInfo = await db.all<{ name: string }>(`PRAGMA table_info(reservations)`);
-  const reservationColumns = reservationInfo.map((column) => column.name);
+  const reservationInfo = (await db.all<{ name: string }>(`PRAGMA table_info(reservations)`)) as unknown as { name: string }[];
+  const reservationColumns = (reservationInfo || []).map((column) => column.name);
   if (!reservationColumns.includes('unitId')) {
     await db.exec(`ALTER TABLE reservations ADD COLUMN unitId TEXT`);
   }

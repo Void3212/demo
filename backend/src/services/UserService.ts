@@ -56,10 +56,10 @@ export class UserService {
   }
 
   async findByEmail(email: string): Promise<User | null> {
-    return this.db.get<User>(
+    return (await this.db.get<User>(
       'SELECT * FROM users WHERE LOWER(email) = LOWER(?)',
       [email]
-    );
+    )) || null;
   }
 
   async validateCredentials(email: string, password: string): Promise<User> {
@@ -70,10 +70,16 @@ export class UserService {
     return user;
   }
 
+  async getAllUsers(): Promise<User[]> {
+    return (await this.db.all<User[]>(
+      'SELECT * FROM users'
+    )) || [];
+  }
+
   async getUserById(id: string): Promise<User | null> {
-    return this.db.get<User>(
+    return (await this.db.get<User>(
       'SELECT * FROM users WHERE id = ?',
       [id]
-    );
+    )) || null;
   }
 }

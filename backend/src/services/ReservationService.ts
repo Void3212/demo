@@ -81,10 +81,10 @@ export class ReservationService {
   }
 
   async getReservation(id: string): Promise<Reservation | null> {
-    return this.db.get<Reservation>(
-      'SELECT * FROM reservations WHERE id = ?',
-      [id]
-    );
+    return (await this.db.get<Reservation>(
+      `SELECT * FROM reservations WHERE id = ?`,
+      [id],
+    )) || null;
   }
 
   async getUserReservations(userId: string): Promise<Reservation[]> {

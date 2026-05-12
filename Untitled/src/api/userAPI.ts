@@ -52,4 +52,13 @@ export class UserAPI {
 
     return response.json();
   }
+
+  static async getUsers(): Promise<User[]> {
+    const response = await fetch(`${API_URL}/users`);
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to fetch users');
+    }
+    return response.json();
+  }
 }

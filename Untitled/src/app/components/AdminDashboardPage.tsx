@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { type Product, type ProductCategory } from "../data/products";
-import { type User, getUsers } from "../data/users";
+import type { User } from "../data/users";
 import { useReservationUnits } from "../../hooks/useReservationUnits";
 import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reservationAPI";
 import { AdminSettingsAPI, type AdminSettings } from "../../api/adminSettingsAPI";
+import { UserAPI } from "../../api/userAPI";
 import {
   type ReservationServiceCategory,
   type ReservationUnit,
@@ -452,11 +453,23 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
 
     loadReservations();
     loadWalkIns();
-    setReservationUsers(getUsers());
+
+    const loadUsers = async () => {
+      try {
+        const users = await UserAPI.getUsers();
+        setReservationUsers(users);
+      } catch (error) {
+        console.error('Failed to load users for admin dashboard:', error);
+        setReservationUsers([]);
+      }
+    };
+
+    loadUsers();
 
     const refresh = () => {
       loadReservations();
       loadWalkIns();
+      loadUsers();
     };
 
     const intervalId = window.setInterval(refresh, 10000);
@@ -467,6 +480,28 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       window.removeEventListener('focus', refresh);
     };
   }, []);
+
+  // Refresh users when entering users section or on window focus
+  useEffect(() => {
+    const refreshUsers = async () => {
+      try {
+        const users = await UserAPI.getUsers();
+        setReservationUsers(users);
+      } catch (error) {
+        console.error('Failed to refresh users:', error);
+      }
+    };
+
+    if (activeSection === 'users') {
+      refreshUsers();
+    }
+
+    window.addEventListener('focus', refreshUsers);
+
+    return () => {
+      window.removeEventListener('focus', refreshUsers);
+    };
+  }, [activeSection]);
 
   const handleAddWalkIn = async () => {
     if (!newWalkIn.customerName.trim() || !newWalkIn.paymentAmount || !newWalkIn.amountReceived) {

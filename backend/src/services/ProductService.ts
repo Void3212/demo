@@ -44,7 +44,7 @@ export class ProductService {
   }
 
   async getProduct(id: string): Promise<Product | null> {
-    return this.db.get<Product>(`SELECT * FROM products WHERE id = ?`, [id]);
+    return (await this.db.get<Product>(`SELECT * FROM products WHERE id = ?`, [id])) || null;
   }
 
   async getAllProducts(): Promise<Product[]> {

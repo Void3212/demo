@@ -40,7 +40,7 @@ export class ReservationUnitService {
   }
 
   async getUnit(id: string): Promise<ReservationUnit | null> {
-    return this.db.get<ReservationUnit>(`SELECT * FROM reservation_units WHERE id = ?`, [id]);
+    return (await this.db.get<ReservationUnit>(`SELECT * FROM reservation_units WHERE id = ?`, [id])) || null;
   }
 
   async getAllUnits(): Promise<ReservationUnit[]> {

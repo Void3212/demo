@@ -21,12 +21,12 @@ export class AdminSettingsService {
   constructor(private db: Database<sqlite3.Database, sqlite3.Statement>) {}
 
   async getSettings(): Promise<AdminSettings> {
-    const rows = await this.db.all<{ key: string; value: string }>(
+    const rows = (await this.db.all<{ key: string; value: string }>(
       'SELECT key, value FROM admin_settings',
-    );
+    )) as unknown as { key: string; value: string }[];
 
     const settings: Record<string, any> = { ...DEFAULT_ADMIN_SETTINGS };
-    for (const row of rows) {
+    for (const row of (rows || [])) {
       try {
         settings[row.key] = JSON.parse(row.value);
       } catch {
