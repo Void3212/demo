@@ -1,6 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { OrderService } from "../services/OrderService";
-import type { Order, OrderStatus } from "../../data/orders";
+import { OrderService, type Order, type OrderStatus } from "../services/OrderService";
 
 const router = Router();
 

@@ -41,6 +41,20 @@ const CATEGORY_LABELS: DesktopCategoryName[] = [
   "Alcoholic Drinks",
 ];
 
+type LiveChatRequestStatus = "waiting" | "connected" | "closed";
+
+interface LiveChatRequest {
+  id: string;
+  status: LiveChatRequestStatus;
+  customerMessages: string[];
+  adminMessages: string[];
+  requestedAt: number;
+  updatedAt: number;
+}
+
+const LIVE_CHAT_STORAGE_KEY = "chillingan_live_chat_request";
+const ADMIN_SETTINGS_UPDATED_EVENT = "admin_settings_updated";
+
 function DesktopProductCard({ product, onProductSelect }: { product: Product; onProductSelect?: (product: Product) => void }) {
   return (
     <button
@@ -75,16 +89,124 @@ function SupportChatPanel() {
     { sender: "agent", text: "Hey! I’m Chillingan support. Tell me if you want recommendations, an ingredient swap, or a booking note." },
   ]);
   const [isTyping, setIsTyping] = useState(false);
-  const [isLiveAgent, setIsLiveAgent] = useState(false);
-  const [liveAgentName] = useState("Lara");
+  const [liveAgentAvailable, setLiveAgentAvailable] = useState(false);
+  const [liveAgentName, setLiveAgentName] = useState("Lara");
+  const [liveChatRequest, setLiveChatRequest] = useState<LiveChatRequest | null>(null);
+
+  const appendAdminMessages = (adminMessages: string[]) => {
+    setMessages((prev) => {
+      const existingAdmin = new Set(prev.filter((item) => item.sender === "agent").map((item) => item.text));
+      const newAdminMessages = adminMessages.filter((text) => !existingAdmin.has(text));
+      return [...prev, ...newAdminMessages.map((text) => ({ sender: "agent", text }))];
+    });
+  };
+
+  const appendCustomerMessages = (customerMessages: string[]) => {
+    setMessages((prev) => {
+      const existingCustomer = new Set(prev.filter((item) => item.sender === "user").map((item) => item.text));
+      const newMessages = customerMessages.filter((text) => !existingCustomer.has(text));
+      return [...prev, ...newMessages.map((text) => ({ sender: "user", text }))];
+    });
+  };
+
+  const loadAdminSettings = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const stored = window.localStorage.getItem("admin_settings");
+      if (!stored) return;
+      const settings = JSON.parse(stored) as { liveAgentAvailable?: boolean; liveAgentName?: string };
+      setLiveAgentAvailable(Boolean(settings.liveAgentAvailable));
+      setLiveAgentName(settings.liveAgentName || "Lara");
+    } catch (error) {
+      console.error("Failed to load live agent settings:", error);
+    }
+  };
+
+  const loadLiveChatRequest = () => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(LIVE_CHAT_STORAGE_KEY);
+      if (!raw) {
+        setLiveChatRequest(null);
+        return;
+      }
+      const request = JSON.parse(raw) as LiveChatRequest;
+      setLiveChatRequest(request);
+      if (request.adminMessages.length > 0) {
+        appendAdminMessages(request.adminMessages);
+      }
+      if (request.customerMessages.length > 0) {
+        appendCustomerMessages(request.customerMessages);
+      }
+    } catch (error) {
+      console.error("Failed to load live chat request:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadAdminSettings();
+    loadLiveChatRequest();
+    const handleStorage = (event: StorageEvent) => {
+      if (!event.key) return;
+      if (event.key === "admin_settings") {
+        loadAdminSettings();
+      }
+      if (event.key === LIVE_CHAT_STORAGE_KEY) {
+        loadLiveChatRequest();
+      }
+    };
+
+    window.addEventListener("storage", handleStorage);
+    const handleSettingsUpdated = () => loadAdminSettings();
+    window.addEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
+    };
+  }, []);
+
+  const updateLiveChatRequest = (nextRequest: LiveChatRequest) => {
+    window.localStorage.setItem(LIVE_CHAT_STORAGE_KEY, JSON.stringify(nextRequest));
+    setLiveChatRequest(nextRequest);
+  };
+
+  const createLiveChatRequest = (customerMessage: string) => {
+    const request: LiveChatRequest = {
+      id: `req-${Date.now()}`,
+      status: "waiting",
+      customerMessages: [customerMessage],
+      adminMessages: [],
+      requestedAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    updateLiveChatRequest(request);
+  };
+
+  const appendLiveChatCustomerMessage = (customerMessage: string) => {
+    if (!liveChatRequest) {
+      createLiveChatRequest(customerMessage);
+      return;
+    }
+
+    const nextRequest: LiveChatRequest = {
+      ...liveChatRequest,
+      customerMessages: [...liveChatRequest.customerMessages, customerMessage],
+      updatedAt: Date.now(),
+    };
+    updateLiveChatRequest(nextRequest);
+  };
 
   const getBotResponse = (text: string) => {
     const lower = text.toLowerCase();
-    if (/employee|human|real|person|agent/.test(lower)) {
-      return "I’m connecting you to a live employee now. Please hold while I transfer your chat.";
+    if (/employee|human|real|person|agent|contact employee|live employee/.test(lower)) {
+      if (liveAgentAvailable) {
+        return "Good news — a live employee is available. I’m sending your request to the admin support queue now.";
+      }
+      return "Our live employees are currently unavailable. I can still help with menu choices, order guidance, and booking details.";
     }
     if (/order|platter|booking|reservation/.test(lower)) {
-      return "Sure — I can help with that. What date and time would you like for your booking or order?";
+      return "Sure — I can help with that. What date, time, or package are you thinking about?";
     }
     if (/pickup|pickup time|pickup/.test(lower)) {
       return "Got it. We can have your order ready for pickup at your chosen time. Need help with directions or parking?";
@@ -99,19 +221,22 @@ function SupportChatPanel() {
   };
 
   const queueBotResponse = (text: string) => {
+    if (liveChatRequest?.status === "connected") {
+      setIsTyping(true);
+      window.setTimeout(() => {
+        setMessages((prev) => [...prev, { sender: "agent", text: "Your message has been sent to the live employee. They’ll reply here shortly." }]);
+        setIsTyping(false);
+      }, 900);
+      return;
+    }
+
     const response = getBotResponse(text);
     setIsTyping(true);
     window.setTimeout(() => {
       setMessages((prev) => [...prev, { sender: "agent", text: response }]);
       setIsTyping(false);
-      if (/employee|human|real|person|agent/.test(text.toLowerCase())) {
-        window.setTimeout(() => {
-          setIsLiveAgent(true);
-          setMessages((prev) => [
-            ...prev,
-            { sender: "agent", text: `Hi, this is ${liveAgentName} from Chillingan support. I’m here to help you directly.` },
-          ]);
-        }, 1200);
+      if (/employee|human|real|person|agent|contact employee|live employee/.test(text.toLowerCase()) && liveAgentAvailable) {
+        createLiveChatRequest(text);
       }
     }, 900);
   };
@@ -121,14 +246,19 @@ function SupportChatPanel() {
     if (!trimmed) {
       return;
     }
-
     setMessages((prev) => [...prev, { sender: "user", text: trimmed }]);
     setChatInput("");
+    if (liveChatRequest) {
+      appendLiveChatCustomerMessage(trimmed);
+    }
     queueBotResponse(trimmed);
   };
 
   const handleQuickReply = (reply: string) => {
     setMessages((prev) => [...prev, { sender: "user", text: reply }]);
+    if (liveChatRequest) {
+      appendLiveChatCustomerMessage(reply);
+    }
     queueBotResponse(reply);
   };
 
@@ -139,15 +269,22 @@ function SupportChatPanel() {
     }
   };
 
+  const requestStatusText = liveChatRequest
+    ? liveChatRequest.status === "waiting"
+      ? "Live employee support is queued. Waiting for an available team member to accept your chat."
+      : liveChatRequest.status === "connected"
+        ? `Connected with ${liveAgentName}. They’ll help you finish your request.`
+        : "This live chat request has been closed."
+    : liveAgentAvailable
+      ? "Support available 8am–10pm daily. Quick replies are ready whenever you are."
+      : "Support available 8am–10pm daily. A live employee is offline, but I can still help you.";
+
   return (
-    <div className="absolute left-[850px] top-[156px] z-[60] h-[700px] w-[600px] rounded-[50px] bg-white/95 p-[36px] shadow-[0_35px_110px_rgba(0,0,0,0.18)] ring-1 ring-black/5 backdrop-blur-md pointer-events-auto">
-      <div className="absolute -left-[100px] top-[40px] h-[180px] w-[180px] rounded-full bg-[#fce7e4] blur-[80px]" />
-      <div className="relative z-10 space-y-[22px]">
+    <div className="relative z-10 flex h-full min-h-0 w-full max-w-full flex-col rounded-[50px] bg-white/95 p-[32px] shadow-[0_40px_120px_rgba(0,0,0,0.18)] ring-1 ring-black/5 backdrop-blur-md">
+      <div className="absolute -left-[110px] top-[40px] h-[190px] w-[190px] rounded-full bg-[#fce7e4] blur-[90px]" />
+      <div className="relative z-10 flex h-full flex-col gap-[22px]">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="relative h-[54px] w-[54px] overflow-hidden rounded-full bg-white shadow-[0_12px_30px_rgba(0,0,0,0.12)] ring-1 ring-[#ffffff70]">
-              <img src={imgChillinganHeader} alt="Chillingan logo" className="h-full w-full object-cover" />
-            </div>
             <div>
               <p className="font-['DM_Sans:Bold',sans-serif] text-[28px] font-bold text-[#1f1f1f]">Chillingan Support</p>
               <p className="mt-2 text-[14px] text-[#6b6b6b]">Here for questions, event requests, or order customizations.</p>
@@ -181,7 +318,7 @@ function SupportChatPanel() {
           </div>
         </div>
 
-        <div className="h-[362px] overflow-y-auto pr-3 space-y-[16px] rounded-[40px] border border-[#f1e0dc] bg-[#fff8f6] p-[20px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.8)]">
+        <div className="flex-1 min-h-0 overflow-y-auto pr-3 space-y-[16px] rounded-[40px] border border-[#f1e0dc] bg-[#fff8f6] p-[24px] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.8)]">
           {messages.map((message, index) => (
             <div
               key={index}
@@ -198,10 +335,7 @@ function SupportChatPanel() {
         </div>
 
         <div className="rounded-[36px] bg-[#fff0ee] p-[18px] text-[13px] text-[#6b4c42] ring-1 ring-[#ffddd8]">
-          {isLiveAgent ?
-            `A live employee (${liveAgentName}) is now connected. They’ll help you finish your request.` :
-            "Support available 8am–10pm daily. Quick replies are ready whenever you are."
-          }
+          {requestStatusText}
         </div>
         <div className="flex items-center gap-[14px] rounded-[32px] border border-[#f0d7d0] bg-[#fffaf7] p-[12px] shadow-[0_18px_40px_rgba(241,154,135,0.08)]">
           <input
@@ -227,7 +361,7 @@ function SupportChatPanel() {
 
 function ChatSidebarInfo() {
   return (
-    <div className="absolute left-[220px] top-[540px] z-[50] w-[520px] rounded-[40px] border border-[#f4d8d2] bg-[#fff6f3] p-[28px] shadow-[0_28px_70px_rgba(238,142,109,0.12)] pointer-events-auto">
+    <div className="relative z-[50] w-full rounded-[40px] border border-[#f4d8d2] bg-[#fff6f3] p-[32px] shadow-[0_36px_90px_rgba(238,142,109,0.14)] pointer-events-auto">
       <p className="text-[18px] font-semibold text-[#2d2d2d]">Need help planning your BBQ?</p>
       <p className="mt-3 text-[15px] leading-[1.8] text-[#5f5f5f]">Ask us about party bundles, extra sauces, or any custom requests. Chillingan support is ready to handle your event order.</p>
       <div className="mt-5 flex flex-wrap gap-2">
@@ -241,7 +375,7 @@ function ChatSidebarInfo() {
 
 function ProfilePanel({ profileForm, onChange, onSave, status, user, deliveredOrders }: { profileForm: ProfileFormState; onChange: (field: keyof ProfileFormState, value: string) => void; onSave: () => void; status: string | null; user?: User | null; deliveredOrders?: Order[] }) {
   return (
-    <div className="absolute left-1/2 top-[120px] z-[60] grid min-h-[640px] max-h-[calc(100vh-120px)] w-[min(1080px,calc(100vw-140px))] -translate-x-1/2 grid-cols-1 gap-5 overflow-hidden rounded-[50px] bg-[#eef7ff]/95 p-[28px] shadow-[0_35px_110px_rgba(0,0,0,0.18)] ring-1 ring-[#dfe7ff]/70 border border-[#d8e4ff] backdrop-blur-md sm:grid-cols-[360px_1fr]">
+    <div className="absolute left-1/2 top-[100px] z-[60] grid min-h-[720px] max-h-[calc(100vh-100px)] w-[min(1180px,calc(100vw-100px))] -translate-x-1/2 grid-cols-1 gap-5 overflow-hidden rounded-[50px] bg-[#eef7ff]/95 p-[32px] shadow-[0_35px_110px_rgba(0,0,0,0.18)] ring-1 ring-[#dfe7ff]/70 border border-[#d8e4ff] backdrop-blur-md sm:grid-cols-[420px_1fr]">
       <div className="relative overflow-y-auto max-h-full rounded-[40px] bg-[#f5f8ff] p-[24px] shadow-[0_20px_60px_rgba(20,64,122,0.08)] ring-1 ring-white/20">
         <div className="absolute -left-[60px] top-[20px] h-[150px] w-[150px] rounded-full bg-[#dbeafe] blur-[90px]" />
         <div className="relative z-10 space-y-5">
@@ -251,7 +385,7 @@ function ProfilePanel({ profileForm, onChange, onSave, status, user, deliveredOr
           </div>
 
           {deliveredOrders && deliveredOrders.length > 0 ? (
-            <div className="space-y-4">
+            <div className="space-y-4 max-h-[calc(100vh-320px)] overflow-y-auto pr-2">
               {deliveredOrders.map((order) => (
                 <div key={order.id} className="rounded-[24px] border border-[#dfe7ff] bg-white p-[18px] shadow-sm">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -974,14 +1108,13 @@ export default function AdminSide({ onProductSelect, onCartClick, onLogout, user
   return (
     <div className="bg-[#f1e6d2] relative size-full" data-name="ADMIN SIDE">
       <Sidebar activeIcon={activeSidebarIcon} />
-      {isChatActive && (
-        <div className="absolute inset-y-0 right-0 left-[118px] z-40 pointer-events-auto" />
-      )}
       {isChatActive ? (
-        <>
-          <SupportChatPanel />
+        <div className="absolute left-1/2 top-[32px] bottom-[32px] z-[60] flex w-[min(860px,calc(100vw-3rem))] -translate-x-1/2 flex-col gap-5">
+          <div className="flex-1 min-h-0">
+            <SupportChatPanel />
+          </div>
           <ChatSidebarInfo />
-        </>
+        </div>
       ) : isPortfolioActive ? (
         <PortfolioPanel />
       ) : isProfileActive ? (
@@ -1090,8 +1223,8 @@ export default function AdminSide({ onProductSelect, onCartClick, onLogout, user
         </div>
       </button>
       <div
-        className={isHomeActive || isChatActive ? "absolute h-[368px] top-[145px] w-[552px]" : "hidden"}
-        style={{ left: isChatActive ? 180 : 120 }}
+        className={isHomeActive ? "absolute h-[368px] top-[145px] w-[552px]" : "hidden"}
+        style={{ left: 120 }}
         data-name="Chillingan Header"
       >
         <img alt="" className="absolute inset-0 max-w-none mix-blend-darken object-cover pointer-events-none size-full" src={imgChillinganHeader} />

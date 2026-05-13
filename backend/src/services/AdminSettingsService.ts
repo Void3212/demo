@@ -5,6 +5,8 @@ export interface AdminSettings {
   maintenanceMode: boolean;
   allowGuestCheckout: boolean;
   emailNotifications: boolean;
+  liveAgentAvailable: boolean;
+  liveAgentName: string;
   businessHours: string;
   defaultCurrency: string;
 }
@@ -13,6 +15,8 @@ const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   maintenanceMode: false,
   allowGuestCheckout: true,
   emailNotifications: true,
+  liveAgentAvailable: false,
+  liveAgentName: 'Lara',
   businessHours: '10:00 - 22:00',
   defaultCurrency: 'PHP',
 };

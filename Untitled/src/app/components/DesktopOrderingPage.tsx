@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import imgChillinganHeader from "figma:asset/cc4233f9bd38641a5ac2903d4f8eb6294ec92106.png";
 import AdminSide from "../../imports/AdminSide";
 import { OrderAPI } from "../../api/orderAPI";
 import OrderTracking from "./OrderTracking";
@@ -8,7 +9,8 @@ import { type User } from "../data/users";
 
 interface DesktopOrderingPageProps {
   onNavigateToReservation: () => void;
-  onLogout: () => void;
+  onRequestAuth?: () => void;
+  onLogout?: () => void;
   user: User | null;
 }
 
@@ -21,8 +23,8 @@ const DESIGN_WIDTH = 1600;
 const DESIGN_HEIGHT = 1052;
 const CART_PANEL_WIDTH = 430;
 
-export default function DesktopOrderingPage({ onNavigateToReservation, onLogout, user }: DesktopOrderingPageProps) {
-  const [isCartOpen, setIsCartOpen] = useState(false);
+export default function DesktopOrderingPage({ onNavigateToReservation, onRequestAuth, onLogout, user }: DesktopOrderingPageProps) {
+  const [isCartOpen, setIsCartOpen] = useState(true);
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [scale, setScale] = useState(1);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
@@ -51,13 +53,13 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
     const updateScale = () => {
       if (!parentRef.current) return;
       const { width, height } = parentRef.current.getBoundingClientRect();
-      setScale(Math.max(width / DESIGN_WIDTH, height / DESIGN_HEIGHT));
+      setScale(Math.min(width / (DESIGN_WIDTH + (isCartOpen ? CART_PANEL_WIDTH : 0)), height / DESIGN_HEIGHT));
     };
 
     updateScale();
     window.addEventListener("resize", updateScale);
     return () => window.removeEventListener("resize", updateScale);
-  }, []);
+  }, [isCartOpen]);
 
   useEffect(() => {
     if (!user) {
@@ -125,7 +127,7 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
       prev
         .map((item) =>
           item.product.id === productId
-            ? { ...item, quantity: Math.max(1, item.quantity + delta) }
+            ? { ...item, quantity: item.quantity + delta }
             : item,
         )
         .filter((item) => item.quantity > 0),
@@ -133,7 +135,13 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
   };
 
   const handleCheckout = async () => {
-    if (cartItems.length === 0 || !user?.address) return;
+    if (!user) {
+      setCheckoutMessage("Please log in to continue to checkout.");
+      onRequestAuth?.();
+      return;
+    }
+
+    if (cartItems.length === 0 || !user.address) return;
 
     setIsSubmitting(true);
     setCheckoutMessage(null);
@@ -178,16 +186,32 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
   const deliveredOrders = recentOrders.filter((order) => order.status === "delivered");
 
   return (
-    <div ref={parentRef} className="w-screen min-h-screen overflow-auto bg-gray-100 flex items-start justify-center py-8">
+    <div ref={parentRef} className="w-screen h-screen overflow-hidden bg-[#f3f1e6] flex items-start justify-start">
       <div
-        className="relative overflow-hidden rounded-[30px] shadow-xl bg-[#f1e6d2]"
+        className="relative overflow-hidden rounded-[30px] shadow-xl"
         style={{ width: `${(DESIGN_WIDTH + (isCartOpen ? CART_PANEL_WIDTH : 0)) * scale}px`, height: `${DESIGN_HEIGHT * scale}px` }}
       >
+        <img
+          src={imgChillinganHeader}
+          alt="Chillingan background"
+          className="absolute inset-0 h-full w-full object-cover opacity-40 blur-2xl"
+        />
+        <div className="absolute inset-0 bg-[#f1e6d2]/80" />
         <div className="absolute inset-0" style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
           <div
             className="relative w-[1600px] h-[1052px] transition-all duration-300"
             style={{ transform: `translateX(${isCartOpen ? CART_PANEL_WIDTH : 0}px)` }}
           >
+            {/* Right side blurred BBQ background */}
+            <div className="absolute inset-0 w-1/2 right-0 overflow-hidden rounded-r-3xl">
+              <img
+                src={imgChillinganHeader}
+                alt="Chillingan BBQ background"
+                className="h-full w-full object-cover blur-md opacity-60"
+              />
+              <div className="absolute inset-0 bg-[#f1e6d2]/40" />
+            </div>
+
             <AdminSide
               onProductSelect={handleProductSelect}
               onCartClick={handleCartClick}
@@ -196,16 +220,14 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
               deliveredOrders={deliveredOrders}
             />
 
-            {!isCartOpen && (
-              <button
-                type="button"
-                onClick={handleReservationClick}
-                aria-label="Open reservation page"
-                title="Go to reservation"
-                className="absolute cursor-pointer rounded-3xl bg-transparent hover:bg-black/5 transition-colors"
-                style={{ left: 605, top: 192, width: 899, height: 245 }}
-              />
-            )}
+            <button
+              type="button"
+              onClick={handleReservationClick}
+              aria-label="Open reservation page"
+              title="Go to reservation"
+              className="absolute cursor-pointer rounded-3xl bg-transparent hover:bg-black/5 transition-colors"
+              style={{ left: 605, top: 192, width: 899, height: 245 }}
+            />
           </div>
 
           {isCartOpen && (
@@ -213,19 +235,10 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
               <div className="absolute left-0 top-0 h-[1052px] w-[430px] bg-white shadow-[12px_0_40px_rgba(0,0,0,0.18)] border-r border-slate-200 z-40">
                 <div className="flex h-full flex-col justify-between px-8 py-8">
                   <div>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-2xl font-bold text-slate-900">My Order</p>
-                        <p className="mt-2 text-sm text-slate-500">Delivery address</p>
-                        <p className="text-base font-semibold text-slate-900">{user?.address ?? "No delivery address saved"}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setIsCartOpen(false)}
-                        className="rounded-full border border-slate-200 px-3 py-2 text-slate-600 hover:bg-slate-100"
-                      >
-                        ✕
-                      </button>
+                    <div>
+                      <p className="text-2xl font-bold text-slate-900">My Order</p>
+                      <p className="mt-2 text-sm text-slate-500">Delivery address</p>
+                      <p className="text-base font-semibold text-slate-900">{user?.address ?? "No delivery address saved"}</p>
                     </div>
 
                     <p className="mt-4 text-sm text-slate-500">Estimated delivery 40 mins</p>
@@ -287,14 +300,16 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
                     <button
                       type="button"
                       onClick={handleCheckout}
-                      disabled={cartItems.length === 0 || !user?.address || isSubmitting}
+                      disabled={cartItems.length === 0 || isSubmitting}
                       className="w-full rounded-3xl bg-orange-500 px-4 py-4 text-base font-semibold text-white shadow-lg shadow-orange-500/20 hover:bg-orange-600 disabled:cursor-not-allowed disabled:bg-slate-300"
                     >
                       {isSubmitting
                         ? "Processing payment..."
                         : cartItems.length === 0
                         ? "Add items to checkout"
-                        : user?.address
+                        : !user
+                        ? "Login to checkout"
+                        : user.address
                         ? "Checkout now"
                         : "Enter delivery address"}
                     </button>

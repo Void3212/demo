@@ -8,12 +8,12 @@ import type { User } from "../data/users";
 
 interface OrderingPageProps {
   onNavigateToReservation: () => void;
+  onRequestAuth: () => void;
   user: User | null;
 }
 
-export default function OrderingPage({ onNavigateToReservation, user }: OrderingPageProps) {
+export default function OrderingPage({ onNavigateToReservation, onRequestAuth, user }: OrderingPageProps) {
   const { cartItems, itemCount, subtotal, deliveryFee, total, addToCart, updateQuantity, clearCart } = useCart();
-  const [showCart, setShowCart] = useState(true);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
   const [confirmedDeliveredOrderIds, setConfirmedDeliveredOrderIds] = useState<string[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -78,7 +78,13 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
   };
 
   const handleCheckout = async () => {
-    if (cartItems.length === 0 || !user?.address) return;
+    if (!user) {
+      setCheckoutMessage("Please log in or register to place an order.");
+      onRequestAuth();
+      return;
+    }
+
+    if (cartItems.length === 0 || !user.address) return;
 
     setIsSubmitting(true);
     setCheckoutMessage(null);
@@ -118,7 +124,7 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
 
   return (
     <div className="min-h-screen bg-[#f3f5f7] text-slate-900">
-      <div className="mx-auto flex max-w-[1480px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1400px] flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="rounded-[32px] bg-white px-6 py-6 shadow-sm sm:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -137,7 +143,7 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
           </div>
         </div>
 
-        <div className="grid gap-6 xl:grid-cols-[1.8fr_0.95fr]">
+        <div className="grid gap-6 lg:grid-cols-[1.6fr_0.95fr]">
           <div className="rounded-[32px] bg-white p-4 shadow-sm sm:p-6">
             <div className="flex items-center justify-between gap-4 pb-4 sm:pb-6">
               <div>
@@ -161,17 +167,9 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
                 <p className="text-sm font-semibold uppercase tracking-[0.24em] text-[#ff7a05]">Your cart</p>
                 <p className="mt-1 text-2xl font-bold text-slate-900">{itemCount} item{itemCount === 1 ? "" : "s"}</p>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowCart((current) => !current)}
-                className="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                {showCart ? "Hide" : "Show"}
-              </button>
             </div>
 
-            {showCart ? (
-              <div className="mt-6 space-y-4">
+            <div className="mt-6 space-y-4">
                 {cartItems.length === 0 ? (
                   <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
                     Your cart is empty. Add a meal to see the delivery estimate and total.
@@ -242,14 +240,16 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  disabled={cartItems.length === 0 || !user?.address || isSubmitting}
+                  disabled={cartItems.length === 0 || isSubmitting}
                   className="w-full rounded-[28px] bg-[#ff7a05] px-5 py-4 text-base font-semibold text-white transition hover:bg-[#e66b00] disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
                   {isSubmitting
                     ? "Processing payment..."
                     : cartItems.length === 0
                     ? "Add items to checkout"
-                    : user?.address
+                    : !user
+                    ? "Login to checkout"
+                    : user.address
                     ? "Checkout now"
                     : "Enter delivery address"}
                 </button>
@@ -270,11 +270,6 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
                   />
                 </div>
               </div>
-            ) : (
-              <div className="mt-6 rounded-[28px] bg-slate-50 p-5 text-sm text-slate-600">
-                Cart summary is hidden. Tap “Show” to review your order before checkout.
-              </div>
-            )}
           </aside>
         </div>
       </div>

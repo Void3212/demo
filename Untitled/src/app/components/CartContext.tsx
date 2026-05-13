@@ -55,7 +55,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setCartItems((prev) =>
       prev
         .map((item) =>
-          item.product.id === productId ? { ...item, quantity: Math.max(1, quantity) } : item,
+          item.product.id === productId ? { ...item, quantity } : item,
         )
         .filter((item) => item.quantity > 0),
     );

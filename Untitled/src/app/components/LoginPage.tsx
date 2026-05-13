@@ -5,9 +5,12 @@ import { UserAPI } from "../../api/userAPI";
 interface LoginPageProps {
   onLoginSuccess: (user: User) => void;
   onNavigateToRegister: () => void;
+  onNavigateToBrowse?: () => void;
+  onClose?: () => void;
+  isModal?: boolean;
 }
 
-export default function LoginPage({ onLoginSuccess, onNavigateToRegister }: LoginPageProps) {
+export default function LoginPage({ onLoginSuccess, onNavigateToRegister, onNavigateToBrowse, onClose, isModal = false }: LoginPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,8 +29,18 @@ export default function LoginPage({ onLoginSuccess, onNavigateToRegister }: Logi
   };
 
   return (
-    <div className="min-h-screen bg-[#f1e6d2] px-4 py-10 md:px-8">
-      <div className="mx-auto flex max-w-[1200px] flex-col gap-10 rounded-[40px] border border-[#f2ddd5] bg-white shadow-[0_40px_120px_rgba(0,0,0,0.08)] md:flex-row md:items-stretch">
+    <div className={isModal ? "relative w-full p-6 md:p-8" : "min-h-screen bg-[#f1e6d2] px-4 py-10 md:px-8"}>
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-10 rounded-[40px] border border-[#f2ddd5] bg-white shadow-[0_40px_120px_rgba(0,0,0,0.08)] md:flex-row md:items-stretch">
+        {isModal && onClose ? (
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute right-6 top-6 inline-flex h-11 w-11 items-center justify-center rounded-full bg-slate-900 text-white transition hover:bg-slate-800"
+          >
+            ×
+          </button>
+        ) : null}
+
         <div className="relative overflow-hidden rounded-[40px] bg-[#ff7a05] p-10 text-white md:w-[45%]">
           <div className="space-y-6">
             <h1 className="text-4xl font-bold tracking-tight">Chillingan</h1>
@@ -43,7 +56,7 @@ export default function LoginPage({ onLoginSuccess, onNavigateToRegister }: Logi
           <div className="absolute -right-28 top-10 h-[220px] w-[220px] rounded-full bg-[#fff5ef]/60 blur-[60px]" />
         </div>
 
-        <div className="flex flex-1 flex-col justify-center p-10 md:p-16">
+        <div className="relative flex flex-1 flex-col justify-center p-10 md:p-16">
           <div className="mb-8">
             <p className="text-sm uppercase tracking-[0.24em] text-[#d51d1d]">Log in</p>
             <h2 className="mt-3 text-3xl font-bold text-slate-900">Continue to your account</h2>
@@ -82,13 +95,21 @@ export default function LoginPage({ onLoginSuccess, onNavigateToRegister }: Logi
             </button>
           </form>
 
-          <div className="mt-8 border-t border-slate-200 pt-6 text-sm text-slate-600">
+          <div className="mt-8 border-t border-slate-200 pt-6 text-sm text-slate-600 space-y-3">
             <p>
               New to Chillingan?{' '}
               <button type="button" onClick={onNavigateToRegister} className="font-semibold text-[#ff7a05] hover:underline">
                 Create an account
               </button>
             </p>
+            {onNavigateToBrowse ? (
+              <p>
+                Prefer to keep browsing?{' '}
+                <button type="button" onClick={onNavigateToBrowse} className="font-semibold text-[#ff7a05] hover:underline">
+                  Continue as guest
+                </button>
+              </p>
+            ) : null}
           </div>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reserva
 import { AdminSettingsAPI, type AdminSettings } from "../../api/adminSettingsAPI";
 import { UserAPI } from "../../api/userAPI";
 import { OrderAPI, type Order, type OrderStatus } from "../../api/orderAPI";
+import SupportChatAdminPanel from "./SupportChatAdminPanel";
 import {
   type ReservationServiceCategory,
   type ReservationUnit,
@@ -41,14 +42,6 @@ interface EditableProduct {
   imageUrl: string;
 }
 
-interface AdminSettings {
-  maintenanceMode: boolean;
-  allowGuestCheckout: boolean;
-  emailNotifications: boolean;
-  businessHours: string;
-  defaultCurrency: string;
-}
-
 const navItems = [
   { key: "calendar", label: "Calendar" },
   { key: "schedule", label: "Reservations" },
@@ -58,6 +51,7 @@ const navItems = [
   { key: "charts", label: "Charts" },
   { key: "history", label: "History" },
   { key: "users", label: "Users" },
+  { key: "support", label: "Support" },
   { key: "settings", label: "Settings" },
 ] as const;
 
@@ -348,6 +342,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     maintenanceMode: false,
     allowGuestCheckout: true,
     emailNotifications: true,
+    liveAgentAvailable: false,
+    liveAgentName: "Lara",
     businessHours: "10:00 - 22:00",
     defaultCurrency: "PHP",
   });
@@ -358,12 +354,14 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
         const fetched = await AdminSettingsAPI.getSettings();
         setAdminSettings(fetched);
         localStorage.setItem("admin_settings", JSON.stringify(fetched));
+        window.dispatchEvent(new Event("admin_settings_updated"));
       } catch (error) {
         console.error("Failed to load admin settings from backend:", error);
         try {
           const storedSettings = localStorage.getItem("admin_settings");
           if (storedSettings) {
             setAdminSettings(JSON.parse(storedSettings));
+            window.dispatchEvent(new Event("admin_settings_updated"));
           }
         } catch (innerError) {
           console.error("Failed to load admin settings from localStorage:", innerError);
@@ -381,11 +379,13 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       const nextSettings = await AdminSettingsAPI.updateSettings({ [key]: value });
       setAdminSettings(nextSettings);
       localStorage.setItem("admin_settings", JSON.stringify(nextSettings));
+      window.dispatchEvent(new Event("admin_settings_updated"));
     } catch (error) {
       console.error("Failed to update admin settings on backend:", error);
       try {
         const next = { ...adminSettings, [key]: value } as AdminSettings;
         localStorage.setItem("admin_settings", JSON.stringify(next));
+        window.dispatchEvent(new Event("admin_settings_updated"));
       } catch (innerError) {
         console.error("Failed to save admin settings locally:", innerError);
       }
@@ -442,9 +442,6 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
         );
 
         setReservations(active);
-        if (activeSection === 'schedule') {
-          markReservationsSeen();
-        }
         setHistoryRecords((prev) => {
           const merged = [...archived.map((reservation) => ({
             kind: 'reservation' as const,
@@ -481,9 +478,6 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       try {
         const data = await OrderAPI.getAllOrders();
         setOrders(data);
-        if (activeSection === 'orders') {
-          markOrdersSeen();
-        }
       } catch (error) {
         console.error('Failed to load orders:', error);
         setOrders([]);
@@ -2200,6 +2194,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                   </div>
                 </div>
               </section>
+            ) : activeSection === "support" ? (
+              <SupportChatAdminPanel />
             ) : activeSection === "settings" ? (
               <section className="mt-8 space-y-6">
                 <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
@@ -2220,18 +2216,6 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                       </div>
                     </label>
                     <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
-                      <span className="text-sm font-semibold text-slate-700">Guest Checkout</span>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="checkbox"
-                          checked={adminSettings.allowGuestCheckout}
-                          onChange={(e) => handleSettingChange("allowGuestCheckout", e.target.checked)}
-                          className="h-5 w-5 rounded border-slate-300 text-[#1f5eff]"
-                        />
-                        <span className="text-sm text-slate-600">Allow customers to reserve without registering.</span>
-                      </div>
-                    </label>
-                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
                       <span className="text-sm font-semibold text-slate-700">Email Notifications</span>
                       <div className="flex items-center gap-3">
                         <input
@@ -2242,6 +2226,26 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                         />
                         <span className="text-sm text-slate-600">Send email alerts for new reservations.</span>
                       </div>
+                    </label>
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Live employee chat</span>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={adminSettings.liveAgentAvailable}
+                          onChange={(e) => handleSettingChange("liveAgentAvailable", e.target.checked)}
+                          className="h-5 w-5 rounded border-slate-300 text-[#1f5eff]"
+                        />
+                        <span className="text-sm text-slate-600">Allow customers to request a live agent from the support widget.</span>
+                      </div>
+                    </label>
+                    <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
+                      <span className="text-sm font-semibold text-slate-700">Live agent name</span>
+                      <input
+                        value={adminSettings.liveAgentName}
+                        onChange={(e) => handleSettingChange("liveAgentName", e.target.value)}
+                        className="mt-2 rounded-[24px] border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#1f5eff] focus:ring-2 focus:ring-[#1f5eff]/10"
+                      />
                     </label>
                     <label className="flex flex-col gap-3 rounded-[24px] border border-slate-200 bg-white p-4">
                       <span className="text-sm font-semibold text-slate-700">Business Hours</span>

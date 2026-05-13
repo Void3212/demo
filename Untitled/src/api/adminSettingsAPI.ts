@@ -4,6 +4,8 @@ export interface AdminSettings {
   maintenanceMode: boolean;
   allowGuestCheckout: boolean;
   emailNotifications: boolean;
+  liveAgentAvailable: boolean;
+  liveAgentName: string;
   businessHours: string;
   defaultCurrency: string;
 }

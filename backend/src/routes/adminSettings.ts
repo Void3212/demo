@@ -23,6 +23,8 @@ export function createAdminSettingsRoutes(db: Database<sqlite3.Database, sqlite3
         'maintenanceMode',
         'allowGuestCheckout',
         'emailNotifications',
+        'liveAgentAvailable',
+        'liveAgentName',
         'businessHours',
         'defaultCurrency',
       ];

@@ -175,7 +175,7 @@ function Group4() {
           <path d={svgPaths.p2624e000} fill="var(--fill-0, #797575)" id="Vector" />
         </svg>
       </div>
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[38.737px] leading-[normal] left-[402.39px] text-[26px] text-black top-[693.97px] w-[9.904px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[38.737px] leading-[normal] left-[402.39px] text-[32px] text-black top-[693.97px] w-[9.904px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         1
       </p>
       <div className="absolute inset-[67.19%_71.99%_31.31%_26.51%]" data-name="Vector">
@@ -230,13 +230,13 @@ function Group9({ selectedProducts }: { selectedProducts: Product[] }) {
       <div className="absolute bg-[#fffcf8] h-[843px] left-[131px] rounded-[25px] top-[192px] w-[457.364px]">
         <div aria-hidden="true" className="absolute border-4 border-[rgba(241,230,210,0.5)] border-solid inset-[-4px] pointer-events-none rounded-[29px]" />
       </div>
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[38.737px] leading-[normal] left-[165px] text-[26px] text-black top-[225px] w-[127.846px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[38.737px] leading-[normal] left-[165px] text-[32px] text-black top-[225px] w-[127.846px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         My Order
       </p>
       <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[38.737px] leading-[normal] left-[163px] text-[26px] text-black top-[308px] w-[242.187px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         1342 Morris Street
       </p>
-      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[165px] text-[#363535] text-[20px] top-[285px] w-[166.56px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[165px] text-[#363535] text-[24px] top-[285px] w-[166.56px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         Delivery address
       </p>
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[197.21px] text-[#797575] text-[20px] top-[355px] w-[76.527px]" style={{ fontVariationSettings: "'opsz' 14" }}>
@@ -266,38 +266,38 @@ function Group9({ selectedProducts }: { selectedProducts: Product[] }) {
           </div>
         </div>
       </div>
-      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[325.86px] text-[18px] text-black top-[639.56px] w-[129.646px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[325.86px] text-[22px] text-black top-[639.56px] w-[129.646px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         {secondItem.description}
       </p>
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[180.91px] text-[#797575] text-[20px] top-[794.51px] w-[91.833px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         Sub Total
       </p>
-      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[180.91px] text-[#797575] text-[20px] top-[887.66px] w-[47.717px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[180.91px] text-[#797575] text-[24px] top-[887.66px] w-[47.717px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         Total
       </p>
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[180.91px] text-[#797575] text-[20px] top-[825.87px] w-[122.444px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         Delivery Fee
       </p>
-      <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium h-[28.592px] leading-[normal] left-[325.86px] text-[20px] text-black top-[609.12px] w-[165.659px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium h-[28.592px] leading-[normal] left-[325.86px] text-[24px] text-black top-[609.12px] w-[165.659px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         {secondItem.name}
       </p>
       <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[20px] text-black text-right top-[609.12px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         ₱39
       </p>
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[20px] text-black text-right top-[794.51px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[24px] text-black text-right top-[794.51px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         ₱{subTotal}
       </p>
       <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[20px] text-black text-right top-[887.66px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         ₱{total}
       </p>
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[20px] text-black text-right top-[825.87px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[24px] text-black text-right top-[825.87px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         ₱{deliveryFee}
       </p>
       <Group4 />
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal h-[28.592px] leading-[normal] left-[324.96px] text-[18px] text-black top-[451.4px] w-[129.646px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         {firstItem.description}
       </p>
-      <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium h-[28.592px] leading-[normal] left-[324.96px] text-[20px] text-black top-[420.97px] w-[165.659px]" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium h-[28.592px] leading-[normal] left-[324.96px] text-[24px] text-black top-[420.97px] w-[165.659px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         {firstItem.name}
       </p>
       <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold h-[28.592px] leading-[normal] left-[497px] text-[20px] text-black text-right top-[420.97px] whitespace-nowrap w-[70px]" style={{ fontVariationSettings: "'opsz' 14" }}>
@@ -307,7 +307,7 @@ function Group9({ selectedProducts }: { selectedProducts: Product[] }) {
       <div className="absolute bg-[#d9d9d9] h-[3.689px] left-[144.9px] top-[779.75px] w-[432.155px]" />
       <div className="absolute bg-[#d9d9d9] h-[3.689px] left-[144px] top-[870.14px] w-[432.155px]" />
       <div className="absolute bg-[#ff7a05] h-[55.339px] left-[162.91px] rounded-[10px] top-[945.77px] w-[396.142px]" />
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[309px] text-[28px] text-white top-[955px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[309px] text-[34px] text-white top-[955px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Proceed
       </p>
     </div>
@@ -343,19 +343,19 @@ export default function AdminSide({ selectedProducts }: { selectedProducts: Prod
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[638px] text-[24px] text-black top-[500px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Nearby
       </p>
-      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[769px] text-[24px] text-black top-[500px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[769px] text-[29px] text-black top-[500px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Promotion
       </p>
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[936px] text-[24px] text-black top-[500px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Newcomers
       </p>
-      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[1112px] text-[24px] text-black top-[500px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[1112px] text-[29px] text-black top-[500px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Best Seller
       </p>
       <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[1272px] text-[24px] text-black top-[502px] w-[121px]" style={{ fontVariationSettings: "'opsz' 14" }}>
         Top Rated
       </p>
-      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[1446px] text-[24px] text-black top-[502px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Regular',sans-serif] font-normal leading-[normal] left-[1446px] text-[29px] text-black top-[502px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         All
       </p>
       <div className="absolute inset-[48.1%_42.65%_50.12%_55.8%]" data-name="concierge-bell">
@@ -379,7 +379,7 @@ export default function AdminSide({ selectedProducts }: { selectedProducts: Prod
       <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[706px] text-[36px] text-white top-[332px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Services
       </p>
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[687px] text-[40px] text-black top-[280px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[687px] text-[48px] text-black top-[280px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Our Other
       </p>
       <div className="absolute flex h-[2px] items-center justify-center left-[626px] top-[552px] w-[878px]">
@@ -432,7 +432,7 @@ export default function AdminSide({ selectedProducts }: { selectedProducts: Prod
       <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium leading-[normal] left-[1266px] text-[24px] text-black top-[767px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Chicken Lechon
       </p>
-      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[1456px] text-[24px] text-black top-[767px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[1456px] text-[29px] text-black top-[767px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         P 39
       </p>
       <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium leading-[normal] left-[1265px] text-[#797575] text-[20px] top-[804px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>{`Fast-Food `}</p>
@@ -451,7 +451,7 @@ export default function AdminSide({ selectedProducts }: { selectedProducts: Prod
           </div>
         </div>
       </div>
-      <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium leading-[normal] left-[941px] text-[24px] text-black top-[761px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
+      <p className="absolute font-['DM_Sans:Medium',sans-serif] font-medium leading-[normal] left-[941px] text-[29px] text-black top-[761px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>
         Fried Chicken
       </p>
       <p className="absolute font-['DM_Sans:Bold',sans-serif] font-bold leading-[normal] left-[1131px] text-[24px] text-black top-[761px] whitespace-nowrap" style={{ fontVariationSettings: "'opsz' 14" }}>

@@ -7,7 +7,8 @@ import { loadAdminSettings } from "../../utils/adminSettings";
 
 interface ReservationPageProps {
   onNavigateBack: () => void;
-  user: User;
+  onRequestAuth: () => void;
+  user: User | null;
 }
 
 const timeSlots = Array.from({ length: 24 }, (_, index) => `${index.toString().padStart(2, "0")}:00`);
@@ -28,7 +29,7 @@ function formatDetailDate(dateString: string) {
   });
 }
 
-export default function ReservationPage({ onNavigateBack, user }: ReservationPageProps) {
+export default function ReservationPage({ onNavigateBack, onRequestAuth, user }: ReservationPageProps) {
   const { serviceCategories, unitsByService } = useReservationUnits();
   const [selectedService, setSelectedService] = useState<string>(serviceCategories[0]?.id ?? "billiard");
   const [selectedItem, setSelectedItem] = useState<string>("");
@@ -97,6 +98,11 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
     };
 
     const loadUserReservations = async () => {
+      if (!user) {
+        setUserReservations([]);
+        return;
+      }
+
       try {
         const data = await ReservationAPI.getReservations(user.id);
         setUserReservations(data);
@@ -166,6 +172,12 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
   }, []);
 
   const handleReserve = async () => {
+    if (!user) {
+      setReservationError("Please log in or register before reserving.");
+      onRequestAuth();
+      return;
+    }
+
     try {
       const latestSettings = await AdminSettingsAPI.getSettings();
       setAdminSettings(latestSettings);
@@ -240,12 +252,22 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                   Choose your experience, reserve the best slot, and finish your booking with a quick confirmation.
                 </p>
               </div>
-              <button
-                onClick={onNavigateBack}
-                className="rounded-full bg-[#ff5f1f] px-6 py-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(255,95,31,0.22)] transition hover:bg-[#e64b12]"
-              >
-                Back to ordering
-              </button>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <button
+                  onClick={onNavigateBack}
+                  className="rounded-full bg-[#ff5f1f] px-6 py-4 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(255,95,31,0.22)] transition hover:bg-[#e64b12]"
+                >
+                  Back to ordering
+                </button>
+                {!user ? (
+                  <button
+                    onClick={onRequestAuth}
+                    className="rounded-full border border-slate-200 bg-white px-6 py-4 text-sm font-semibold text-slate-900 shadow-sm transition hover:bg-slate-50"
+                  >
+                    Login to reserve
+                  </button>
+                ) : null}
+              </div>
             </div>
 
             <div className="rounded-[32px] border border-slate-200 bg-[#fff4eb] p-5 shadow-sm sm:p-7">
@@ -372,25 +394,35 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
             {timeSlots.map((slot) => {
               const reservation = reservedSlotMap.get(slot);
               const isReserved = Boolean(reservation);
-              const isReservedByCurrentUser = reservation?.userId === user.id;
+              const isReservedByCurrentUser = Boolean(user && reservation?.userId === user.id);
               const walkIn = getWalkInForSlot(slot);
               const isBlockedByWalkIn = Boolean(walkIn);
               const slotHour = parseInt(slot.split(':')[0], 10);
               const isPastTime = isToday && slotHour < currentHour;
-              const isDisabled = isReserved || isBlockedByWalkIn || isPastTime;
+              const isDisabled = isPastTime;
               const isSelected = selectedSlot === slot && !isDisabled;
+              const showTakenStatus = Boolean(user && isReserved && !isReservedByCurrentUser);
+              const showWalkInStatus = Boolean(user && isBlockedByWalkIn);
+
               return (
                 <button
                   key={slot}
                   type="button"
-                  onClick={() => !isDisabled && setSelectedSlot(slot)}
+                  onClick={() => {
+                    if (isDisabled) return;
+                    if (!user && (isReserved || isBlockedByWalkIn)) {
+                      onRequestAuth();
+                      return;
+                    }
+                    setSelectedSlot(slot);
+                  }}
                   disabled={isDisabled}
                   className={`flex items-center justify-between rounded-[28px] border px-4 py-4 text-left text-sm font-semibold transition duration-200 ${
                     isReservedByCurrentUser
                       ? "border-[#34a853] bg-[#e7f7eb] text-[#1d6f30]"
-                      : isReserved
+                      : showTakenStatus
                       ? "border-[#d71f2a] bg-[#fdecea] text-[#9f2a2c]"
-                      : isBlockedByWalkIn
+                      : showWalkInStatus
                       ? "border-[#d97706] bg-[#fff7e0] text-[#92400e]"
                       : isPastTime
                       ? "border-slate-300 bg-slate-100 text-slate-400 cursor-not-allowed"
@@ -404,9 +436,9 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       isReservedByCurrentUser
                         ? "bg-[#dcf5d8] text-[#1e682f]"
-                        : isReserved
+                        : showTakenStatus
                         ? "bg-[#fecaca] text-[#9f2a2c]"
-                        : isBlockedByWalkIn
+                        : showWalkInStatus
                         ? "bg-[#ffe4b5] text-[#92400e]"
                         : isPastTime
                         ? "bg-slate-200 text-slate-500"
@@ -415,9 +447,9 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                   >
                     {isReservedByCurrentUser
                       ? "Your reservation"
-                      : isReserved
+                      : showTakenStatus
                       ? "Taken"
-                      : isBlockedByWalkIn
+                      : showWalkInStatus
                       ? "Walk-in"
                       : isPastTime
                       ? "Past"
@@ -453,7 +485,9 @@ export default function ReservationPage({ onNavigateBack, user }: ReservationPag
                 </p>
                 <p>
                   <span className="font-semibold text-slate-900">Status:</span>{' '}
-                  {selectedSlotReservation
+                  {!user
+                    ? "Sign in to view availability"
+                    : selectedSlotReservation
                     ? selectedSlotReservation.userId === user.id
                       ? "Reserved by you"
                       : "Taken"

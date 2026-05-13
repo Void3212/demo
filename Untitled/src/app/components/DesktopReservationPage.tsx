@@ -16,7 +16,7 @@ export default function DesktopReservationPage({ onNavigateBack }: DesktopReserv
     const updateScale = () => {
       if (!parentRef.current) return;
       const { width, height } = parentRef.current.getBoundingClientRect();
-      setScale(Math.max(width / DESIGN_WIDTH, height / DESIGN_HEIGHT));
+      setScale(Math.min(width / DESIGN_WIDTH, height / DESIGN_HEIGHT, 1));
     };
 
     updateScale();
