@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, type KeyboardEvent, type CSSProperties } from "react";
 import { type Product, type ProductCategory } from "../app/data/products";
+import { type Order } from "../app/data/orders";
 import { type User, updateUser } from "../app/data/users";
 import { useProducts } from "../hooks/useProducts";
 import svgPaths from "./svg-r6inbo3h4b";
@@ -238,36 +239,44 @@ function ChatSidebarInfo() {
   );
 }
 
-function ProfilePanel({ profileForm, onChange, onSave, status }: { profileForm: ProfileFormState; onChange: (field: keyof ProfileFormState, value: string) => void; onSave: () => void; status: string | null }) {
+function ProfilePanel({ profileForm, onChange, onSave, status, user, deliveredOrders }: { profileForm: ProfileFormState; onChange: (field: keyof ProfileFormState, value: string) => void; onSave: () => void; status: string | null; user?: User | null; deliveredOrders?: Order[] }) {
   return (
     <div className="absolute left-1/2 top-[120px] z-[60] grid min-h-[640px] max-h-[calc(100vh-120px)] w-[min(1080px,calc(100vw-140px))] -translate-x-1/2 grid-cols-1 gap-5 overflow-hidden rounded-[50px] bg-[#eef7ff]/95 p-[28px] shadow-[0_35px_110px_rgba(0,0,0,0.18)] ring-1 ring-[#dfe7ff]/70 border border-[#d8e4ff] backdrop-blur-md sm:grid-cols-[360px_1fr]">
-      <div className="relative overflow-hidden rounded-[40px] bg-[#f5f8ff] p-[24px] shadow-[0_20px_60px_rgba(20,64,122,0.08)] ring-1 ring-white/20">
+      <div className="relative overflow-y-auto max-h-full rounded-[40px] bg-[#f5f8ff] p-[24px] shadow-[0_20px_60px_rgba(20,64,122,0.08)] ring-1 ring-white/20">
         <div className="absolute -left-[60px] top-[20px] h-[150px] w-[150px] rounded-full bg-[#dbeafe] blur-[90px]" />
         <div className="relative z-10 space-y-5">
           <div className="space-y-2">
-            <p className="text-[18px] font-semibold text-[#1f1f1f]">Chillingan profile</p>
-            <p className="text-[14px] leading-[1.8] text-[#5f677f]">Keep your profile ready for faster checkout and a better dining experience.</p>
-          </div>
-          <div className="rounded-[32px] border border-[#dfe7ff] bg-white p-[20px] text-[#334058] shadow-sm">
-            <p className="text-[15px] font-semibold text-[#0f172a]">Quick info</p>
-            <p className="mt-3 text-[14px] leading-[1.75] text-[#475569]">Profile image, delivery address, and contact details help us tailor your order flow and loyalty perks.</p>
+            <p className="text-[18px] font-semibold text-[#1f1f1f]">Delivered order history</p>
+            <p className="text-[14px] leading-[1.8] text-[#5f677f]">Review your delivered orders and what was included in each delivery.</p>
           </div>
 
-          <div className="space-y-4">
-            <div className="rounded-[32px] bg-white p-[20px] text-[#334058] shadow-sm">
-              <p className="text-[13px] uppercase tracking-[0.18em] text-[#64748b]">Favorite order</p>
-              <p className="mt-2 text-[17px] font-semibold text-[#0f172a]">Chillingan BBQ platter</p>
+          {deliveredOrders && deliveredOrders.length > 0 ? (
+            <div className="space-y-4">
+              {deliveredOrders.map((order) => (
+                <div key={order.id} className="rounded-[24px] border border-[#dfe7ff] bg-white p-[18px] shadow-sm">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[15px] font-semibold text-[#0f172a]">Order {order.id}</p>
+                      <p className="mt-1 text-[13px] text-[#64748b]">
+                        {order.items.map((item) => `${item.quantity}× ${item.product.name}`).join(", ")}
+                      </p>
+                    </div>
+                    {order.deliveredAt ? (
+                      <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-[#0f172a]">
+                        Delivered {new Date(order.deliveredAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                      </p>
+                    ) : null}
+                  </div>
+                  <p className="mt-3 text-[13px] text-[#475569]">Total paid: ₱{order.total.toFixed(2)}</p>
+                </div>
+              ))}
             </div>
-            <div className="rounded-[32px] bg-white p-[20px] text-[#334058] shadow-sm">
-              <p className="text-[13px] uppercase tracking-[0.18em] text-[#64748b]">Order cadence</p>
-              <p className="mt-2 text-[17px] font-semibold text-[#0f172a]">Every weekend</p>
+          ) : (
+            <div className="rounded-[32px] border border-[#dfe7ff] bg-white p-[20px] text-[#475569] shadow-sm">
+              <p className="text-[15px] font-semibold text-[#0f172a]">No delivered orders yet</p>
+              <p className="mt-3 text-[14px] leading-[1.75]">Delivered orders will appear here once they are confirmed.</p>
             </div>
-          </div>
-
-          <div className="rounded-[32px] bg-[#eff6ff] p-[20px] text-[#334058] shadow-sm">
-            <p className="text-[15px] font-semibold text-[#0f172a]">Why this helps</p>
-            <p className="mt-3 text-[14px] leading-[1.75] text-[#475569]">A complete profile means we can match your preferred pickup times, save your delivery location, and send offers right where you want them.</p>
-          </div>
+          )}
         </div>
       </div>
 
@@ -294,8 +303,12 @@ function ProfilePanel({ profileForm, onChange, onSave, status }: { profileForm: 
 
           <div className="grid gap-4 sm:grid-cols-[140px_1fr]">
             <div className="h-[120px] w-full overflow-hidden rounded-[30px] bg-[#f5f5f5] border border-[#e2e8f0]">
-              {profileForm.profileImage ? (
-                <img alt="Profile" src={profileForm.profileImage} className="h-full w-full object-cover" />
+              {user?.profileImage || profileForm.profileImage ? (
+                <img
+                  alt={user?.name ? `${user.name} avatar` : "Profile"}
+                  src={user?.profileImage ?? profileForm.profileImage ?? ""}
+                  className="h-full w-full object-cover"
+                />
               ) : (
                 <div className="flex h-full w-full items-center justify-center text-[28px] font-semibold text-[#7a7a7a]">{profileForm.name.charAt(0).toUpperCase() || "U"}</div>
               )}
@@ -894,7 +907,7 @@ function CategorySelector({ selectedCategory, onSelectCategory }: { selectedCate
   );
 }
 
-export default function AdminSide({ onProductSelect, onCartClick, onLogout, user }: { onProductSelect?: (product: Product) => void; onCartClick?: () => void; onLogout?: () => void; user?: User | null }) {
+export default function AdminSide({ onProductSelect, onCartClick, onLogout, user, deliveredOrders }: { onProductSelect?: (product: Product) => void; onCartClick?: () => void; onLogout?: () => void; user?: User | null; deliveredOrders?: Order[] }) {
   const [activeSidebarIcon, setActiveSidebarIcon] = useState<SidebarIconName>("home");
   const [selectedCategory, setSelectedCategory] = useState<DesktopCategoryName>("Sizzling Meal");
   const [searchQuery, setSearchQuery] = useState("");
@@ -972,7 +985,7 @@ export default function AdminSide({ onProductSelect, onCartClick, onLogout, user
       ) : isPortfolioActive ? (
         <PortfolioPanel />
       ) : isProfileActive ? (
-        <ProfilePanel profileForm={profileForm} onChange={handleProfileChange} onSave={handleSaveProfile} status={profileStatus} />
+        <ProfilePanel profileForm={profileForm} onChange={handleProfileChange} onSave={handleSaveProfile} status={profileStatus} user={profileUser} deliveredOrders={deliveredOrders} />
       ) : (
         <>
           <CategorySelector selectedCategory={selectedCategory} onSelectCategory={setSelectedCategory} />

@@ -5,6 +5,7 @@ import { useReservationUnits } from "../../hooks/useReservationUnits";
 import { ReservationAPI, type Reservation, type WalkIn } from "../../api/reservationAPI";
 import { AdminSettingsAPI, type AdminSettings } from "../../api/adminSettingsAPI";
 import { UserAPI } from "../../api/userAPI";
+import { OrderAPI, type Order, type OrderStatus } from "../../api/orderAPI";
 import {
   type ReservationServiceCategory,
   type ReservationUnit,
@@ -52,6 +53,7 @@ const navItems = [
   { key: "calendar", label: "Calendar" },
   { key: "schedule", label: "Reservations" },
   { key: "walkins", label: "Walk-ins" },
+  { key: "orders", label: "Orders" },
   { key: "onlineOrdering", label: "Online Ordering" },
   { key: "charts", label: "Charts" },
   { key: "history", label: "History" },
@@ -113,6 +115,27 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const [editingProduct, setEditingProduct] = useState<EditableProduct | null>(null);
   const [walkIns, setWalkIns] = useState<WalkIn[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [lastSeenReservationsAt, setLastSeenReservationsAt] = useState<number>(() => {
+    if (typeof window === 'undefined') return Date.now();
+    const stored = window.localStorage.getItem('admin_last_seen_reservations');
+    if (!stored) {
+      const now = Date.now();
+      window.localStorage.setItem('admin_last_seen_reservations', now.toString());
+      return now;
+    }
+    return Number(stored) || Date.now();
+  });
+  const [lastSeenOrdersAt, setLastSeenOrdersAt] = useState<number>(() => {
+    if (typeof window === 'undefined') return Date.now();
+    const stored = window.localStorage.getItem('admin_last_seen_orders');
+    if (!stored) {
+      const now = Date.now();
+      window.localStorage.setItem('admin_last_seen_orders', now.toString());
+      return now;
+    }
+    return Number(stored) || Date.now();
+  });
   const [historyRecords, setHistoryRecords] = useState<HistoryEntry[]>(() => {
     if (typeof window === 'undefined') return [];
     try {
@@ -419,6 +442,9 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
         );
 
         setReservations(active);
+        if (activeSection === 'schedule') {
+          markReservationsSeen();
+        }
         setHistoryRecords((prev) => {
           const merged = [...archived.map((reservation) => ({
             kind: 'reservation' as const,
@@ -451,8 +477,22 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       }
     };
 
+    const loadOrders = async () => {
+      try {
+        const data = await OrderAPI.getAllOrders();
+        setOrders(data);
+        if (activeSection === 'orders') {
+          markOrdersSeen();
+        }
+      } catch (error) {
+        console.error('Failed to load orders:', error);
+        setOrders([]);
+      }
+    };
+
     loadReservations();
     loadWalkIns();
+    loadOrders();
 
     const loadUsers = async () => {
       try {
@@ -470,6 +510,7 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
       loadReservations();
       loadWalkIns();
       loadUsers();
+      loadOrders();
     };
 
     const intervalId = window.setInterval(refresh, 10000);
@@ -494,6 +535,14 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
 
     if (activeSection === 'users') {
       refreshUsers();
+    }
+
+    if (activeSection === 'orders') {
+      markOrdersSeen();
+    }
+
+    if (activeSection === 'schedule') {
+      markReservationsSeen();
     }
 
     window.addEventListener('focus', refreshUsers);
@@ -629,6 +678,32 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
     }
   };
 
+  const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus, message?: string) => {
+    try {
+      const updatedOrder = await OrderAPI.updateOrderStatus(
+        orderId,
+        status,
+        status === 'rejected' ? message : undefined,
+      );
+      setOrders(prev => prev.map(order => order.id === orderId ? updatedOrder : order));
+    } catch (error) {
+      console.error('Failed to update order status:', error);
+      alert('Failed to update order status. Please try again.');
+    }
+  };
+
+  const markReservationsSeen = () => {
+    const now = Date.now();
+    setLastSeenReservationsAt(now);
+    window.localStorage.setItem('admin_last_seen_reservations', now.toString());
+  };
+
+  const markOrdersSeen = () => {
+    const now = Date.now();
+    setLastSeenOrdersAt(now);
+    window.localStorage.setItem('admin_last_seen_orders', now.toString());
+  };
+
   const filteredReservations = useMemo(
     () => reservations.filter((reservation) => reservation.serviceId === selectedUnitCategory),
     [reservations, selectedUnitCategory],
@@ -637,6 +712,22 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
   const activeReservations = useMemo(
     () => reservations.filter((reservation) => reservation.status !== 'cancelled' && reservation.status !== 'completed'),
     [reservations],
+  );
+
+  const newReservationsCount = useMemo(
+    () => reservations.filter((reservation) => {
+      const createdAt = new Date(reservation.createdAt).getTime();
+      return createdAt > lastSeenReservationsAt;
+    }).length,
+    [reservations, lastSeenReservationsAt],
+  );
+
+  const newOrdersCount = useMemo(
+    () => orders.filter((order) => {
+      const createdAt = new Date(order.createdAt).getTime();
+      return createdAt > lastSeenOrdersAt;
+    }).length,
+    [orders, lastSeenOrdersAt],
   );
 
   const filteredHistoryRecords = useMemo(
@@ -893,7 +984,19 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                       : "border border-transparent bg-[#f8f5f0] text-slate-700 hover:border-[#f1d7bd] hover:bg-[#fff7f1]"
                   }`}
                 >
-                  {item.label}
+                  <div className="flex items-center gap-2">
+                    <span>{item.label}</span>
+                    {item.key === 'schedule' && newReservationsCount > 0 ? (
+                      <span className="rounded-full bg-[#dc2626] px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm shadow-[#dc2626]/40">
+                        {newReservationsCount}
+                      </span>
+                    ) : null}
+                    {item.key === 'orders' && newOrdersCount > 0 ? (
+                      <span className="rounded-full bg-[#dc2626] px-2.5 py-1 text-[11px] font-semibold text-white shadow-sm shadow-[#dc2626]/40">
+                        {newOrdersCount}
+                      </span>
+                    ) : null}
+                  </div>
                   <span className="text-xs text-slate-400">›</span>
                 </button>
               );
@@ -922,6 +1025,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                     ? "Calendar Overview"
                     : activeSection === "walkins"
                     ? "Walk-ins"
+                    : activeSection === "orders"
+                    ? "Orders"
                     : activeSection === "charts"
                     ? "Performance Charts"
                     : activeSection === "history"
@@ -939,6 +1044,8 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                     ? "Simple overview of all reserved slots for each date and time."
                     : activeSection === "walkins"
                     ? "Record same-day customers, payments, and table usage."
+                    : activeSection === "orders"
+                    ? "Manage online orders, update status, and track delivery progress."
                     : activeSection === "charts"
                     ? "Monitor booking performance, service usage, and walk-in activity across the business."
                     : activeSection === "history"
@@ -1339,6 +1446,106 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                   ) : (
                     <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
                       No reservations found for the calendar overview.
+                    </div>
+                  )}
+                </div>
+              </section>
+            ) : activeSection === "schedule" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">Reservations</p>
+                      <p className="mt-2 text-sm text-slate-600">Manage upcoming reservations and update booking status.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full bg-[#e7f5f1] px-4 py-2 text-sm font-semibold text-[#166d3b]">
+                        {filteredReservations.length} reservation{filteredReservations.length !== 1 ? 's' : ''}
+                      </span>
+                      <span className="rounded-full bg-[#fff3cd] px-4 py-2 text-sm font-semibold text-[#856404]">
+                        {reservations.filter((reservation) => reservation.status === 'pending').length} pending
+                      </span>
+                      <span className="rounded-full bg-[#d1ecf1] px-4 py-2 text-sm font-semibold text-[#0c5460]">
+                        {reservations.filter((reservation) => reservation.status === 'confirmed').length} confirmed
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-2">
+                    {unitCategoryOptions.map((category) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setSelectedUnitCategory(category.id)}
+                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          selectedUnitCategory === category.id
+                            ? 'bg-[#1f5eff] text-white shadow-sm shadow-[#1f5eff]/20'
+                            : 'bg-[#f3f4f6] text-slate-700 hover:bg-[#e5e7eb]'
+                        }`}
+                      >
+                        {category.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-4">
+                  {filteredReservations.length > 0 ? (
+                    filteredReservations.map((reservation) => (
+                      <div key={reservation.id} className="rounded-[32px] border border-[#ede2d0] bg-white p-6">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-3 mb-3">
+                              <h3 className="text-lg font-semibold text-slate-900">{reservation.userName ?? reservation.userId}</h3>
+                              <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getReservationBadgeStyles(reservation.status)}`}>
+                                {reservation.status}
+                              </span>
+                            </div>
+                            <div className="grid gap-2 text-sm text-slate-600 mb-4">
+                              <p><strong>Unit:</strong> {reservation.unitName ?? reservation.unitId ?? 'Unknown unit'}</p>
+                              <p><strong>Service:</strong> {serviceLabelMap.get(reservation.serviceId ?? '') ?? reservation.serviceId ?? 'Unknown service'}</p>
+                              <p><strong>Date:</strong> {reservation.date}</p>
+                              <p><strong>Time:</strong> {reservation.time}</p>
+                              <p><strong>Party size:</strong> {reservation.partySize ?? '—'}</p>
+                              {reservation.specialRequests && (
+                                <p><strong>Notes:</strong> {reservation.specialRequests}</p>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-2 lg:flex-col lg:items-end">
+                            {reservation.status !== 'cancelled' && reservation.status !== 'completed' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelReservation(reservation.id)}
+                                  className="rounded-full bg-[#fecaca] px-4 py-2 text-sm font-semibold text-[#9f2a2c] hover:bg-[#fca5a5]"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleConfirmDone({ kind: 'reservation', item: reservation })}
+                                  className="rounded-full bg-[#1f5eff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#1848cb]"
+                                >
+                                  Mark Done
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmDone({ kind: 'reservation', item: reservation })}
+                                className="rounded-full bg-[#6b7280] px-4 py-2 text-sm font-semibold text-white hover:bg-[#4b5563]"
+                              >
+                                Archive
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6 text-slate-600">
+                      No reservations found for the selected category.
                     </div>
                   )}
                 </div>
@@ -1871,6 +2078,128 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                   </div>
                 </div>
               </section>
+            ) : activeSection === "orders" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xl font-semibold text-slate-900">Online Orders</p>
+                      <p className="mt-2 text-sm text-slate-600">Manage online food orders, update status, and track delivery progress.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <span className="rounded-full bg-[#e7f5f1] px-4 py-2 text-sm font-semibold text-[#166d3b]">
+                        {orders.filter(o => o.status === 'pending').length} pending
+                      </span>
+                      <span className="rounded-full bg-[#fff3cd] px-4 py-2 text-sm font-semibold text-[#856404]">
+                        {orders.filter(o => o.status === 'accepted').length} accepted
+                      </span>
+                      <span className="rounded-full bg-[#d1ecf1] px-4 py-2 text-sm font-semibold text-[#0c5460]">
+                        {orders.filter(o => o.status === 'shipped').length} shipped
+                      </span>
+                      <span className="rounded-full bg-[#cce5ff] px-4 py-2 text-sm font-semibold text-[#004085]">
+                        {orders.filter(o => o.status === 'delivered').length} delivered
+                      </span>
+                      <span className="rounded-full bg-[#f8d7da] px-4 py-2 text-sm font-semibold text-[#721c24]">
+                        {orders.filter(o => o.status === 'rejected').length} rejected
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 space-y-4">
+                    {orders.length === 0 ? (
+                      <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6 text-center text-slate-600">
+                        No orders yet.
+                      </div>
+                    ) : (
+                      orders.map(order => (
+                        <div key={order.id} className="rounded-[32px] border border-[#ede2d0] bg-white p-6">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-3 mb-3">
+                                <h3 className="text-lg font-semibold text-slate-900">Order #{order.id.slice(-8)}</h3>
+                                <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                                  order.status === 'pending' ? 'bg-[#fff3cd] text-[#856404]' :
+                                  order.status === 'accepted' ? 'bg-[#d1ecf1] text-[#0c5460]' :
+                                  order.status === 'shipped' ? 'bg-[#cce5ff] text-[#004085]' :
+                                  order.status === 'delivered' ? 'bg-[#d4edda] text-[#155724]' :
+                                  order.status === 'rejected' ? 'bg-[#f8d7da] text-[#721c24]' :
+                                  'bg-[#f8d7da] text-[#721c24]'
+                                }`}>
+                                  {order.status}
+                                </span>
+                              </div>
+                              <div className="grid gap-2 text-sm text-slate-600 mb-4">
+                                <p><strong>Customer:</strong> {order.customerName} ({order.customerEmail})</p>
+                                <p><strong>Phone:</strong> {order.customerPhone ?? 'N/A'}</p>
+                                <p><strong>Address:</strong> {order.deliveryAddress}</p>
+                                <p><strong>Ordered:</strong> {new Date(order.createdAt).toLocaleString()}</p>
+                                {order.notes && (
+                                  <p><strong>Instructions:</strong> {order.notes}</p>
+                                )}
+                              </div>
+                              <div className="space-y-2">
+                                <h4 className="font-semibold text-slate-900">Items:</h4>
+                                {order.items.map((item, index) => (
+                                  <div key={index} className="flex items-center gap-3 text-sm">
+                                    <img src={item.product.imageUrl} alt={item.product.name} className="w-10 h-10 rounded object-cover" />
+                                    <span className="flex-1">{item.product.name} × {item.quantity}</span>
+                                    <span className="font-semibold">₱{(item.product.price * item.quantity).toFixed(2)}</span>
+                                  </div>
+                                ))}
+                                <div className="border-t pt-2 text-lg font-bold text-slate-900">
+                                  Total: ₱{order.total.toFixed(2)}
+                                </div>
+                              </div>
+                              {(order.acceptedAt || order.shippedAt || order.deliveredAt) && (
+                                <div className="mt-4">
+                                  <h4 className="font-semibold text-slate-900 mb-2">Tracking:</h4>
+                                  <div className="space-y-1 text-xs text-slate-600">
+                                    {order.acceptedAt && (
+                                      <div>{new Date(order.acceptedAt).toLocaleString()}: Order accepted</div>
+                                    )}
+                                    {order.shippedAt && (
+                                      <div>{new Date(order.shippedAt).toLocaleString()}: Order shipped</div>
+                                    )}
+                                    {order.deliveredAt && (
+                                      <div>{new Date(order.deliveredAt).toLocaleString()}: Order delivered</div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-2 lg:flex-col lg:items-end">
+                              {order.status === 'pending' && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'accepted', 'Order accepted and being prepared')}
+                                  className="rounded-full bg-[#28a745] px-4 py-2 text-sm font-semibold text-white hover:bg-[#218838]"
+                                >
+                                  Accept Order
+                                </button>
+                              )}
+                              {order.status === 'accepted' && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'shipped', 'Order is now out for delivery')}
+                                  className="rounded-full bg-[#007bff] px-4 py-2 text-sm font-semibold text-white hover:bg-[#0056b3]"
+                                >
+                                  Mark Shipped
+                                </button>
+                              )}
+                              {order.status === 'shipped' && (
+                                <button
+                                  onClick={() => handleUpdateOrderStatus(order.id, 'delivered', 'Order has been delivered')}
+                                  className="rounded-full bg-[#17a2b8] px-4 py-2 text-sm font-semibold text-white hover:bg-[#138496]"
+                                >
+                                  Mark Delivered
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </section>
             ) : activeSection === "settings" ? (
               <section className="mt-8 space-y-6">
                 <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
@@ -1932,9 +2261,14 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                     </label>
                   </div>
                 </div>
-              </section>
-            ) : (
-              <>
+
+                <div className="mt-8 rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xl font-semibold text-slate-900">Reservation Unit Settings</p>
+                    <p className="text-sm text-slate-600">Adjust available table/room categories and unit assignments used by reservations.</p>
+                  </div>
+                </div>
+
                 <div className="mt-6 flex flex-wrap items-center gap-3">
                   {unitCategoryOptions.map((category) => {
                     const isSelected = category.id === selectedUnitCategory;
@@ -2093,55 +2427,17 @@ export default function AdminDashboardPage({ user, onLogout }: AdminDashboardPag
                     </div>
                   </div>
 
-                  <div className="space-y-6">
-                    <div className="rounded-[32px] border border-[#ede2d0] bg-[#fff7f2] p-6">
-                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-700">Reservations</p>
-                          <p className="mt-2 text-sm text-slate-600">
-                            Track reserved slots and the user who booked them.
-                          </p>
-                        </div>
-                        <div className="rounded-full bg-[#eef5ff] px-4 py-2 text-sm font-semibold text-[#2a57a0]">
-                          {filteredReservations.length} bookings
-                        </div>
-                      </div>
-
-                      <div className="mt-6 overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
-                          <thead className="bg-[#f8f6f3] text-slate-500">
-                            <tr>
-                              <th className="px-4 py-3 font-semibold">Date</th>
-                              <th className="px-4 py-3 font-semibold">Time</th>
-                              <th className="px-4 py-3 font-semibold">Unit</th>
-                              <th className="px-4 py-3 font-semibold">User</th>
-                              <th className="px-4 py-3 font-semibold">Status</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 bg-white">
-                            {filteredReservations.map((reservation) => (
-                              <tr key={reservation.id}>
-                                <td className="px-4 py-4 text-slate-700">{reservation.date}</td>
-                                <td className="px-4 py-4 text-slate-700">{reservation.time}</td>
-                                <td className="px-4 py-4 text-slate-700">{reservation.unitName ?? reservation.unitId ?? "—"}</td>
-                                <td className="px-4 py-4 text-slate-700">
-                                  <div className="font-semibold text-slate-900">
-                                    {reservation.userName ?? reservationUsers.find((user) => user.id === reservation.userId)?.name ?? reservation.userId}
-                                  </div>
-                                  <div className="text-xs text-slate-500">
-                                    {reservationUsers.find((user) => user.id === reservation.userId)?.email ?? reservation.userId}
-                                  </div>
-                                </td>
-                                <td className="px-4 py-4 text-slate-700">{reservation.status}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  </div>
                 </div>
-              </>
+              </section>
+            ) : activeSection === "migration" ? (
+              <section className="mt-8 space-y-6">
+                <div className="rounded-[32px] border border-[#ede2d0] bg-[#f9fafb] p-6">
+                  <p className="text-xl font-semibold text-slate-900">Data Migration</p>
+                  <p className="mt-2 text-sm text-slate-600">Migrate data from local storage to the database.</p>
+                </div>
+              </section>
+            ) : (
+              <></>
             )}
           </div>
         </main>

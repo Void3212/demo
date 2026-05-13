@@ -3,6 +3,7 @@ import type { Order } from "../data/orders";
 interface OrderTrackingProps {
   orders: Order[];
   isLoading?: boolean;
+  onConfirmDelivered?: (orderId: string) => Promise<void>;
 }
 
 const statusStyles: Record<Order["status"], string> = {
@@ -20,7 +21,7 @@ function formatDate(dateString: string) {
   });
 }
 
-export default function OrderTracking({ orders, isLoading }: OrderTrackingProps) {
+export default function OrderTracking({ orders, isLoading, onConfirmDelivered }: OrderTrackingProps) {
   if (isLoading) {
     return (
       <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
@@ -73,6 +74,18 @@ export default function OrderTracking({ orders, isLoading }: OrderTrackingProps)
               <div className="mt-3 rounded-2xl bg-red-50 p-3 text-sm text-red-700">
                 <p className="font-semibold">Rejected reason</p>
                 <p className="mt-1">{order.rejectionReason}</p>
+              </div>
+            ) : null}
+
+            {order.status === 'delivered' && onConfirmDelivered ? (
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => onConfirmDelivered(order.id)}
+                  className="rounded-full bg-[#dc2626] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#b91c1c]"
+                >
+                  Confirm received
+                </button>
               </div>
             ) : null}
           </div>

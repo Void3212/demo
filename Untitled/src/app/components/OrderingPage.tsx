@@ -15,6 +15,7 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
   const { cartItems, itemCount, subtotal, deliveryFee, total, addToCart, updateQuantity, clearCart } = useCart();
   const [showCart, setShowCart] = useState(true);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [confirmedDeliveredOrderIds, setConfirmedDeliveredOrderIds] = useState<string[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -35,6 +36,21 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
     };
   }, [user]);
 
+  useEffect(() => {
+    const stored = window.localStorage.getItem("confirmedDeliveredOrderIds");
+    if (stored) {
+      try {
+        setConfirmedDeliveredOrderIds(JSON.parse(stored));
+      } catch {
+        setConfirmedDeliveredOrderIds([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("confirmedDeliveredOrderIds", JSON.stringify(confirmedDeliveredOrderIds));
+  }, [confirmedDeliveredOrderIds]);
+
   const fetchUserOrders = async () => {
     if (!user) return;
 
@@ -53,6 +69,12 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
     } finally {
       setOrdersLoading(false);
     }
+  };
+
+  const handleConfirmDelivered = async (orderId: string) => {
+    if (!confirm('Confirm receipt of this delivered order?')) return;
+
+    setConfirmedDeliveredOrderIds((prev) => [...prev, orderId]);
   };
 
   const handleCheckout = async () => {
@@ -239,7 +261,13 @@ export default function OrderingPage({ onNavigateToReservation, user }: Ordering
                 ) : null}
 
                 <div className="mt-6">
-                  <OrderTracking orders={recentOrders} isLoading={ordersLoading} />
+                  <OrderTracking
+                    orders={recentOrders.filter(
+                      (order) => !(order.status === "delivered" && confirmedDeliveredOrderIds.includes(order.id)),
+                    )}
+                    isLoading={ordersLoading}
+                    onConfirmDelivered={handleConfirmDelivered}
+                  />
                 </div>
               </div>
             ) : (

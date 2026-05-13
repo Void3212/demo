@@ -36,6 +36,19 @@ export const OrderAPI = {
     return response.json();
   },
 
+  async getAllOrders(): Promise<Order[]> {
+    const response = await fetch(`${API_BASE}/api/orders`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch all orders: ${response.statusText}`);
+    }
+
+    return response.json();
+  },
+
   /**
    * Fetch a single order by ID
    */
@@ -87,5 +100,18 @@ export const OrderAPI = {
     }
 
     return response.json();
+  },
+
+  /**
+   * Delete an order by ID
+   */
+  async deleteOrder(orderId: string): Promise<void> {
+    const response = await fetch(`${API_BASE}/api/orders/${orderId}`, {
+      method: "DELETE",
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to delete order: ${response.statusText}`);
+    }
   },
 };

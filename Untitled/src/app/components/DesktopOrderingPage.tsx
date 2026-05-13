@@ -26,10 +26,26 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [scale, setScale] = useState(1);
   const [recentOrders, setRecentOrders] = useState<Order[]>([]);
+  const [confirmedDeliveredOrderIds, setConfirmedDeliveredOrderIds] = useState<string[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [checkoutMessage, setCheckoutMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const parentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("confirmedDeliveredOrderIds");
+    if (stored) {
+      try {
+        setConfirmedDeliveredOrderIds(JSON.parse(stored));
+      } catch {
+        setConfirmedDeliveredOrderIds([]);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("confirmedDeliveredOrderIds", JSON.stringify(confirmedDeliveredOrderIds));
+  }, [confirmedDeliveredOrderIds]);
 
   useEffect(() => {
     const updateScale = () => {
@@ -75,6 +91,12 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
     } finally {
       setOrdersLoading(false);
     }
+  };
+
+  const handleConfirmDelivered = async (orderId: string) => {
+    if (!confirm('Confirm receipt of this delivered order?')) return;
+
+    setConfirmedDeliveredOrderIds((prev) => [...prev, orderId]);
   };
 
   const handleReservationClick = () => {
@@ -153,6 +175,8 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
   const deliveryFee = cartItems.length > 0 ? 9 : 0;
   const total = subtotal + deliveryFee;
 
+  const deliveredOrders = recentOrders.filter((order) => order.status === "delivered");
+
   return (
     <div ref={parentRef} className="w-screen min-h-screen overflow-auto bg-gray-100 flex items-start justify-center py-8">
       <div
@@ -164,7 +188,13 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
             className="relative w-[1600px] h-[1052px] transition-all duration-300"
             style={{ transform: `translateX(${isCartOpen ? CART_PANEL_WIDTH : 0}px)` }}
           >
-            <AdminSide onProductSelect={handleProductSelect} onCartClick={handleCartClick} onLogout={onLogout} user={user} />
+            <AdminSide
+              onProductSelect={handleProductSelect}
+              onCartClick={handleCartClick}
+              onLogout={onLogout}
+              user={user}
+              deliveredOrders={deliveredOrders}
+            />
 
             {!isCartOpen && (
               <button
@@ -276,7 +306,13 @@ export default function DesktopOrderingPage({ onNavigateToReservation, onLogout,
                     ) : null}
 
                     <div className="mt-6">
-                      <OrderTracking orders={recentOrders} isLoading={ordersLoading} />
+                      <OrderTracking
+                        orders={recentOrders.filter(
+                          (order) => !(order.status === "delivered" && confirmedDeliveredOrderIds.includes(order.id)),
+                        )}
+                        isLoading={ordersLoading}
+                        onConfirmDelivered={handleConfirmDelivered}
+                      />
                     </div>
                   </div>
                 </div>
