@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { type Product } from '../app/data/products';
+import { type Product, isProductVisible } from '../app/data/products';
 import { fetchAllProducts, createProduct, updateProduct, deleteProduct } from '../api/productAPI';
 
 interface UseProductsOptions {
@@ -74,9 +74,12 @@ export function useProducts(options: UseProductsOptions = {}) {
   const toggleVisibility = async (id: string) => {
     const product = products.find(p => p.id === id);
     if (!product) return;
-    
+
+    const currentlyVisible = isProductVisible(product);
+    const nextVisible = currentlyVisible ? 0 : 1;
+
     try {
-      await updateProductData(id, { visible: !product.visible });
+      await updateProductData(id, { visible: nextVisible });
     } catch (err) {
       console.error('Error toggling visibility:', err);
       throw err;

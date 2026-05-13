@@ -16,7 +16,27 @@ export default function RegisterPage({ onNavigateToLogin, onNavigateToBrowse, on
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [passwordStrength, setPasswordStrength] = useState<"" | "Weak" | "Medium" | "Strong">("");
   const [error, setError] = useState<string | null>(null);
+
+  const evaluatePasswordStrength = (value: string) => {
+    const lengthScore = value.length >= 10;
+    const hasLower = /[a-z]/.test(value);
+    const hasUpper = /[A-Z]/.test(value);
+    const hasDigit = /[0-9]/.test(value);
+    const hasSpecial = /[^A-Za-z0-9]/.test(value);
+    const categories = [hasLower, hasUpper, hasDigit, hasSpecial].filter(Boolean).length;
+
+    if (lengthScore && categories === 4) {
+      return "Strong" as const;
+    }
+    if (value.length >= 8 && categories >= 3) {
+      return "Medium" as const;
+    }
+    return value.length > 0 ? "Weak" as const : "" as const;
+  };
+
+  const isPhoneValid = (value: string) => /^\d{11}$/.test(value);
 
   const handleImageChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -36,8 +56,18 @@ export default function RegisterPage({ onNavigateToLogin, onNavigateToBrowse, on
     event.preventDefault();
     setError(null);
 
+    if (!passwordStrength || passwordStrength !== "Strong") {
+      setError("Please choose a strong password before registering.");
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
+      return;
+    }
+
+    if (!isPhoneValid(phone)) {
+      setError("Phone number must contain exactly 11 digits.");
       return;
     }
 
@@ -55,7 +85,7 @@ export default function RegisterPage({ onNavigateToLogin, onNavigateToBrowse, on
   };
 
   return (
-    <div className={isModal ? "relative w-full p-6 md:p-8" : "min-h-screen bg-[#f1e6d2] px-4 py-10 md:px-8"}>
+    <div className={isModal ? "relative w-full max-h-[calc(100vh-4rem)] overflow-y-auto p-6 md:p-8" : "min-h-screen bg-[#f1e6d2] px-4 py-10 md:px-8"}>
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-10 rounded-[40px] border border-[#f2ddd5] bg-white shadow-[0_40px_120px_rgba(0,0,0,0.08)] md:flex-row md:items-stretch">
         {isModal && onClose ? (
           <button
@@ -114,11 +144,20 @@ export default function RegisterPage({ onNavigateToLogin, onNavigateToBrowse, on
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setPassword(nextValue);
+                  setPasswordStrength(evaluatePasswordStrength(nextValue));
+                }}
                 required
                 className="mt-2 w-full rounded-[24px] border border-slate-200 bg-[#fbf7f1] px-4 py-3 text-slate-900 outline-none transition focus:border-[#ff7a05] focus:ring-2 focus:ring-[#ff7a05]/20"
               />
             </label>
+            {passwordStrength ? (
+              <p className={`text-sm ${passwordStrength === "Strong" ? "text-emerald-600" : passwordStrength === "Medium" ? "text-amber-600" : "text-red-600"}`}>
+                Password strength: {passwordStrength}. A strong password needs at least 10 characters, uppercase, lowercase, digits, and a symbol.
+              </p>
+            ) : null}
             <label className="block text-sm font-semibold text-slate-800">
               Confirm password
               <input
@@ -154,6 +193,7 @@ export default function RegisterPage({ onNavigateToLogin, onNavigateToBrowse, on
                 required
                 className="mt-2 w-full rounded-[24px] border border-slate-200 bg-[#fbf7f1] px-4 py-3 text-slate-900 outline-none transition focus:border-[#ff7a05] focus:ring-2 focus:ring-[#ff7a05]/20"
               />
+              <p className="mt-2 text-xs text-slate-500">Enter exactly 11 digits for your phone number.</p>
             </label>
             <label className="block text-sm font-semibold text-slate-800">
               Delivery address

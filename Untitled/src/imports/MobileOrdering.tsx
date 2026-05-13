@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';import { type Product } from "../app/data/products";import { useProducts } from '../hooks/useProducts';import svgPaths from "./svg-bqj9wgvtth";
+import { useState, useRef, useEffect } from 'react';import { type Product, isProductVisible } from "../app/data/products";import { useProducts } from '../hooks/useProducts';import svgPaths from "./svg-bqj9wgvtth";
 import imgShoppingCart1 from "figma:asset/70246941f1086280a283485a466f03ee58610e97.png";
 import imgImage5 from "figma:asset/b521ae4a6207cfb461308caad9f953831d7824c9.png";
 import imgToyFacesColoredBg81 from "figma:asset/1c103a1acc0b9825064a996efd2dc58920faabd3.png";
@@ -629,7 +629,7 @@ function Home({ searchQuery, setSearchQuery, selectedCategory, setSelectedCatego
       <Frame3 selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
       <div className="absolute left-0 top-0">
         {products
-          .filter((product) => product.visible !== false)
+          .filter(isProductVisible)
           .filter((product) =>
             product.category === selectedCategory &&
             (product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.description.toLowerCase().includes(searchQuery.toLowerCase()))

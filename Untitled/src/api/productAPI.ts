@@ -54,10 +54,15 @@ export async function createProduct(product: Omit<Product, 'id'>): Promise<Produ
 
 export async function updateProduct(id: string, updates: Partial<Product>): Promise<Product> {
   try {
+    const payload = { ...updates } as Partial<Product>;
+    if (payload.visible !== undefined) {
+      payload.visible = payload.visible === false || payload.visible === 0 ? 0 : 1;
+    }
+
     const response = await fetch(`${API_URL}/products/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updates),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       throw new Error(`Failed to update product ${id}: ${response.statusText}`);

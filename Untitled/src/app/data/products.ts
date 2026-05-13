@@ -26,7 +26,10 @@ export interface Product {
   category: ProductCategory;
   imageUrl: string;
   rating: number;
+  visible?: boolean | number;
 }
+
+export const isProductVisible = (product: Product) => product.visible !== false && product.visible !== 0;
 
 // Placeholder product data for the ordering home page.
 // This mirrors the shape of a product table that can later be replaced

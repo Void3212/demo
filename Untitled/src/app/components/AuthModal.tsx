@@ -7,12 +7,12 @@ interface AuthModalProps {
 
 export default function AuthModal({ children, onClose }: AuthModalProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-auto">
       <div
         className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
         onClick={onClose}
       />
-      <div className="relative z-10 w-full max-w-[1120px] rounded-[40px] bg-white shadow-[0_40px_120px_rgba(0,0,0,0.18)]">
+      <div className="relative z-10 w-full max-w-[1120px] max-h-[calc(100vh-4rem)] overflow-auto rounded-[40px] bg-white shadow-[0_40px_120px_rgba(0,0,0,0.18)]">
         {children}
       </div>
     </div>

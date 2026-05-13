@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, type KeyboardEvent, type CSSProperties } from "react";
-import { type Product, type ProductCategory } from "../app/data/products";
+import { type Product, type ProductCategory, isProductVisible } from "../app/data/products";
 import { type Order } from "../app/data/orders";
 import { type User, updateUser } from "../app/data/users";
 import { useProducts } from "../hooks/useProducts";
@@ -1062,7 +1062,7 @@ export default function AdminSide({ onProductSelect, onCartClick, onLogout, user
   const isHomeActive = activeSidebarIcon === "home";
   
   const filteredProducts = storedProducts
-    .filter((product) => product.visible !== false)
+    .filter(isProductVisible)
     .filter(
       (product) =>
         product.category === selectedCategory &&
