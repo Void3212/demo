@@ -46,8 +46,8 @@ export default function OrderTracking({ orders, isLoading, onConfirmDelivered }:
         <p className="mt-2 text-sm text-slate-600">Track your recent deliveries and see whether they are pending, accepted, rejected or on the way.</p>
       </div>
 
-      <div className="space-y-4">
-        {orders.slice(0, 3).map((order) => (
+      <div className="space-y-4 max-h-[560px] overflow-y-auto pr-2">
+        {orders.map((order) => (
           <div key={order.id} className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
@@ -59,14 +59,39 @@ export default function OrderTracking({ orders, isLoading, onConfirmDelivered }:
               </span>
             </div>
 
-            <div className="mt-3 grid gap-2 sm:grid-cols-2">
-              <div className="text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">Total</p>
-                <p>₱{order.total.toFixed(2)}</p>
+            <div className="mt-4 space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">Total</p>
+                  <p>₱{order.total.toFixed(2)}</p>
+                </div>
+                <div className="text-sm text-slate-600">
+                  <p className="font-semibold text-slate-900">Delivery to</p>
+                  <p>{order.deliveryAddress}</p>
+                </div>
               </div>
-              <div className="text-sm text-slate-600">
-                <p className="font-semibold text-slate-900">Delivery to</p>
-                <p>{order.deliveryAddress}</p>
+
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Items ordered</p>
+                <div className="mt-3 space-y-3">
+                  {order.items.map((item) => (
+                    <div key={item.product.id} className="flex items-center gap-3 rounded-[20px] border border-slate-200 bg-slate-50 p-3">
+                      <img
+                        src={item.product.imageUrl}
+                        alt={item.product.name}
+                        className="h-16 w-16 rounded-[18px] object-cover"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-900">{item.product.name}</p>
+                        <p className="mt-1 text-xs text-slate-500 line-clamp-2">{item.product.description}</p>
+                      </div>
+                      <div className="text-right text-sm text-slate-700">
+                        <p className="font-semibold">x{item.quantity}</p>
+                        <p className="text-slate-500">₱{(item.product.price * item.quantity).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 

@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, type KeyboardEvent, type CSSProperties } f
 import { type Product, type ProductCategory, isProductVisible } from "../app/data/products";
 import { type Order } from "../app/data/orders";
 import { type User, updateUser } from "../app/data/users";
+import { SupportChatAPI } from "../api/supportChatAPI";
 import { useProducts } from "../hooks/useProducts";
 import svgPaths from "./svg-r6inbo3h4b";
 import imgRectangle7 from "figma:asset/a76334811a63b21fc5eabd96235b2ab8f1b863a0.png";
@@ -52,8 +53,8 @@ interface LiveChatRequest {
   updatedAt: number;
 }
 
-const LIVE_CHAT_STORAGE_KEY = "chillingan_live_chat_request";
 const ADMIN_SETTINGS_UPDATED_EVENT = "admin_settings_updated";
+const LIVE_CHAT_REQUEST_ID_KEY = "chillingan_live_chat_request_id";
 
 function DesktopProductCard({ product, onProductSelect }: { product: Product; onProductSelect?: (product: Product) => void }) {
   return (
@@ -92,19 +93,25 @@ function SupportChatPanel() {
   const [liveAgentAvailable, setLiveAgentAvailable] = useState(false);
   const [liveAgentName, setLiveAgentName] = useState("Lara");
   const [liveChatRequest, setLiveChatRequest] = useState<LiveChatRequest | null>(null);
+  const [hasNewAdminReply, setHasNewAdminReply] = useState(false);
+  const previousAdminMessageCountRef = useRef(0);
+  const previousCustomerMessageCountRef = useRef(0);
 
   const appendAdminMessages = (adminMessages: string[]) => {
     setMessages((prev) => {
-      const existingAdmin = new Set(prev.filter((item) => item.sender === "agent").map((item) => item.text));
-      const newAdminMessages = adminMessages.filter((text) => !existingAdmin.has(text));
+      const startIndex = Math.min(Math.max(previousAdminMessageCountRef.current, 0), adminMessages.length);
+      const newAdminMessages = adminMessages.slice(startIndex);
+      previousAdminMessageCountRef.current = adminMessages.length;
       return [...prev, ...newAdminMessages.map((text) => ({ sender: "agent", text }))];
     });
+    setHasNewAdminReply(false);
   };
 
   const appendCustomerMessages = (customerMessages: string[]) => {
     setMessages((prev) => {
-      const existingCustomer = new Set(prev.filter((item) => item.sender === "user").map((item) => item.text));
-      const newMessages = customerMessages.filter((text) => !existingCustomer.has(text));
+      const startIndex = Math.min(Math.max(previousCustomerMessageCountRef.current, 0), customerMessages.length);
+      const newMessages = customerMessages.slice(startIndex);
+      previousCustomerMessageCountRef.current = customerMessages.length;
       return [...prev, ...newMessages.map((text) => ({ sender: "user", text }))];
     });
   };
@@ -122,21 +129,43 @@ function SupportChatPanel() {
     }
   };
 
-  const loadLiveChatRequest = () => {
+  const loadStoredRequestId = (): string | null => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem(LIVE_CHAT_REQUEST_ID_KEY);
+  };
+
+  const saveRequestId = (id: string) => {
     if (typeof window === "undefined") return;
+    window.localStorage.setItem(LIVE_CHAT_REQUEST_ID_KEY, id);
+  };
+
+  const loadLiveChatRequest = async () => {
     try {
-      const raw = window.localStorage.getItem(LIVE_CHAT_STORAGE_KEY);
-      if (!raw) {
-        setLiveChatRequest(null);
+      const storedId = loadStoredRequestId();
+      if (!storedId) {
         return;
       }
-      const request = JSON.parse(raw) as LiveChatRequest;
-      setLiveChatRequest(request);
-      if (request.adminMessages.length > 0) {
-        appendAdminMessages(request.adminMessages);
+      const request = await SupportChatAPI.getRequestById(storedId);
+      if (!request) {
+        return;
       }
+
+      const previousAdminCount = previousAdminMessageCountRef.current;
+      if (previousAdminCount > 0 && request.adminMessages.length > previousAdminCount) {
+        setHasNewAdminReply(true);
+        if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+          new Notification("New support reply", {
+            body: request.adminMessages[request.adminMessages.length - 1] || "A live employee has replied.",
+            icon: "/favicon.ico",
+          });
+        }
+      }
+      setLiveChatRequest(request);
       if (request.customerMessages.length > 0) {
         appendCustomerMessages(request.customerMessages);
+      }
+      if (request.adminMessages.length > 0) {
+        appendAdminMessages(request.adminMessages);
       }
     } catch (error) {
       console.error("Failed to load live chat request:", error);
@@ -144,34 +173,42 @@ function SupportChatPanel() {
   };
 
   useEffect(() => {
-    loadAdminSettings();
-    loadLiveChatRequest();
-    const handleStorage = (event: StorageEvent) => {
-      if (!event.key) return;
-      if (event.key === "admin_settings") {
-        loadAdminSettings();
-      }
-      if (event.key === LIVE_CHAT_STORAGE_KEY) {
-        loadLiveChatRequest();
-      }
-    };
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch((error) => console.error("Notification permission request failed:", error));
+    }
 
-    window.addEventListener("storage", handleStorage);
+    loadAdminSettings();
+    void loadLiveChatRequest();
+    const interval = window.setInterval(() => {
+      void loadLiveChatRequest();
+    }, 3000);
+
     const handleSettingsUpdated = () => loadAdminSettings();
     window.addEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
 
     return () => {
-      window.removeEventListener("storage", handleStorage);
+      window.clearInterval(interval);
       window.removeEventListener(ADMIN_SETTINGS_UPDATED_EVENT, handleSettingsUpdated);
     };
   }, []);
 
-  const updateLiveChatRequest = (nextRequest: LiveChatRequest) => {
-    window.localStorage.setItem(LIVE_CHAT_STORAGE_KEY, JSON.stringify(nextRequest));
-    setLiveChatRequest(nextRequest);
+  const updateLiveChatRequest = async (nextRequest: LiveChatRequest) => {
+    try {
+      const updated = await SupportChatAPI.updateRequest(nextRequest.id, {
+        status: nextRequest.status,
+        customerMessages: nextRequest.customerMessages,
+        adminMessages: nextRequest.adminMessages,
+        requestedAt: nextRequest.requestedAt,
+        updatedAt: nextRequest.updatedAt,
+      });
+      setLiveChatRequest(updated);
+    } catch (error) {
+      console.error("Failed to update live chat request:", error);
+      setLiveChatRequest(nextRequest);
+    }
   };
 
-  const createLiveChatRequest = (customerMessage: string) => {
+  const createLiveChatRequest = async (customerMessage: string) => {
     const request: LiveChatRequest = {
       id: `req-${Date.now()}`,
       status: "waiting",
@@ -180,21 +217,32 @@ function SupportChatPanel() {
       requestedAt: Date.now(),
       updatedAt: Date.now(),
     };
-    updateLiveChatRequest(request);
+    try {
+      const created = await SupportChatAPI.createRequest(request);
+      saveRequestId(created.id);
+      setLiveChatRequest(created);
+      return created;
+    } catch (error) {
+      console.error("Failed to create live chat request:", error);
+      saveRequestId(request.id);
+      setLiveChatRequest(request);
+      return request;
+    }
   };
 
-  const appendLiveChatCustomerMessage = (customerMessage: string) => {
+  const appendLiveChatCustomerMessage = async (customerMessage: string) => {
     if (!liveChatRequest) {
-      createLiveChatRequest(customerMessage);
+      await createLiveChatRequest(customerMessage);
       return;
     }
 
     const nextRequest: LiveChatRequest = {
       ...liveChatRequest,
       customerMessages: [...liveChatRequest.customerMessages, customerMessage],
+      status: liveChatRequest.status === "closed" ? "waiting" : liveChatRequest.status,
       updatedAt: Date.now(),
     };
-    updateLiveChatRequest(nextRequest);
+    await updateLiveChatRequest(nextRequest);
   };
 
   const getBotResponse = (text: string) => {
@@ -235,7 +283,7 @@ function SupportChatPanel() {
     window.setTimeout(() => {
       setMessages((prev) => [...prev, { sender: "agent", text: response }]);
       setIsTyping(false);
-      if (/employee|human|real|person|agent|contact employee|live employee/.test(text.toLowerCase()) && liveAgentAvailable) {
+      if (/employee|human|real|person|agent|contact employee|live employee/.test(text.toLowerCase()) && (!liveChatRequest || liveChatRequest.status === "closed")) {
         createLiveChatRequest(text);
       }
     }, 900);
@@ -335,7 +383,10 @@ function SupportChatPanel() {
         </div>
 
         <div className="rounded-[36px] bg-[#fff0ee] p-[18px] text-[13px] text-[#6b4c42] ring-1 ring-[#ffddd8]">
-          {requestStatusText}
+          <p>{requestStatusText}</p>
+          {hasNewAdminReply && (
+            <p className="mt-2 text-sm font-semibold text-[#b91c1c]">New live agent reply received.</p>
+          )}
         </div>
         <div className="flex items-center gap-[14px] rounded-[32px] border border-[#f0d7d0] bg-[#fffaf7] p-[12px] shadow-[0_18px_40px_rgba(241,154,135,0.08)]">
           <input

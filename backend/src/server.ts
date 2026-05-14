@@ -6,6 +6,7 @@ import { createReservationRoutes } from './routes/reservations.js';
 import { createProductRoutes } from './routes/products.js';
 import { createReservationUnitRoutes } from './routes/reservationUnits.js';
 import { createAdminSettingsRoutes } from './routes/adminSettings.js';
+import { createSupportChatRoutes } from './routes/supportChat.js';
 import { createWalkInRoutes } from './routes/walkins.js';
 import { createUserRoutes } from './routes/users.js';
 import ordersRouter from './routes/orders.js';
@@ -41,6 +42,7 @@ async function startServer() {
     app.use('/api/products', createProductRoutes(db));
     app.use('/api/reservation-units', createReservationUnitRoutes(db));
     app.use('/api/admin-settings', createAdminSettingsRoutes(db));
+    app.use('/api/support-chat', createSupportChatRoutes(db));
     app.use('/api/walkins', createWalkInRoutes(db));
     app.use('/api/users', createUserRoutes(db));
     app.use('/api/orders', ordersRouter);

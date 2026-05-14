@@ -159,6 +159,22 @@ export async function initializeDatabase() {
     )
   `);
 
+  // Create support chat request table for live customer/admin chat
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS support_chat_requests (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL CHECK(status IN ('waiting', 'connected', 'closed')),
+      customer_messages TEXT NOT NULL,
+      admin_messages TEXT NOT NULL,
+      requested_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )
+  `);
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_support_chat_status ON support_chat_requests(status);
+  `);
+
   // Create indices for faster queries
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_reservations_userId ON reservations(userId);

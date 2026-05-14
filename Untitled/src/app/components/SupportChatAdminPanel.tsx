@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { AdminSettings } from "../../api/adminSettingsAPI";
+import { SupportChatAPI } from "../../api/supportChatAPI";
 
-const LIVE_CHAT_STORAGE_KEY = "chillingan_live_chat_request";
 const ADMIN_SETTINGS_STORAGE_KEY = "admin_settings";
 
 type LiveChatRequestStatus = "waiting" | "connected" | "closed";
@@ -33,104 +33,207 @@ const parseAdminSettings = (): Pick<AdminSettings, "liveAgentAvailable" | "liveA
   }
 };
 
-const loadStoredChatRequest = (): LiveChatRequest | null => {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.localStorage.getItem(LIVE_CHAT_STORAGE_KEY);
-    if (!raw) return null;
-    return JSON.parse(raw) as LiveChatRequest;
-  } catch {
-    return null;
-  }
-};
+const saveChatRequest = async (request: LiveChatRequest | null) => {
+  if (!request) return;
 
-const saveChatRequest = (request: LiveChatRequest | null) => {
-  if (typeof window === "undefined") return;
-  if (!request) {
-    window.localStorage.removeItem(LIVE_CHAT_STORAGE_KEY);
-    return;
+  try {
+    await SupportChatAPI.updateRequest(request.id, {
+      status: request.status,
+      customerMessages: request.customerMessages,
+      adminMessages: request.adminMessages,
+      requestedAt: request.requestedAt,
+      updatedAt: request.updatedAt,
+    });
+  } catch (error) {
+    console.error("Failed to save live chat request:", error);
   }
-  window.localStorage.setItem(LIVE_CHAT_STORAGE_KEY, JSON.stringify(request));
 };
 
 export default function SupportChatAdminPanel() {
-  const [liveChatRequest, setLiveChatRequest] = useState<LiveChatRequest | null>(null);
+  const [liveChatRequests, setLiveChatRequests] = useState<LiveChatRequest[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [adminMessage, setAdminMessage] = useState("");
   const [settings, setSettings] = useState(parseAdminSettings());
+  const [newCustomerMessages, setNewCustomerMessages] = useState<Record<string, boolean>>({});
+  const [removedRequestIds, setRemovedRequestIds] = useState<Record<string, boolean>>({});
+  const [showNewRequestAlert, setShowNewRequestAlert] = useState(false);
+  const [showNewCustomerReplyAlert, setShowNewCustomerReplyAlert] = useState(false);
+  const previousCustomerMessageCountsRef = useRef<Record<string, number>>({});
+  const previousWaitingCountRef = useRef(0);
+  const isInitialRequestLoad = useRef(true);
+
+  const selectedRequest = liveChatRequests.find((request) => request.id === selectedRequestId) ?? liveChatRequests[0] ?? null;
+  const queueRequests = liveChatRequests.filter((request) => !removedRequestIds[request.id]);
+
+  const loadLiveChatRequests = async () => {
+    try {
+      const requests = await SupportChatAPI.getRequests();
+      const waitingCount = requests.filter((request) => request.status === "waiting").length;
+      const messageCounts: Record<string, number> = {};
+
+      if (!isInitialRequestLoad.current) {
+        if (waitingCount > previousWaitingCountRef.current) {
+          setShowNewRequestAlert(true);
+          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+            new Notification("New support request", {
+              body: `You have ${waitingCount} waiting live support request${waitingCount === 1 ? "" : "s"}.`,
+              icon: "/favicon.ico",
+            });
+          }
+          window.setTimeout(() => setShowNewRequestAlert(false), 5000);
+        }
+
+        const selected = requests.find((request) => request.id === selectedRequestId) ?? requests[0] ?? null;
+        if (selected) {
+          const previousCount = previousCustomerMessageCountsRef.current[selected.id] ?? 0;
+          if (previousCount > 0 && selected.customerMessages.length > previousCount) {
+            setNewCustomerMessages((prev) => ({ ...prev, [selected.id]: true }));
+            setShowNewCustomerReplyAlert(true);
+            if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+              new Notification("New customer reply", {
+                body: selected.customerMessages[selected.customerMessages.length - 1] || "A customer has replied.",
+                icon: "/favicon.ico",
+              });
+            }
+            window.setTimeout(() => setShowNewCustomerReplyAlert(false), 5000);
+          }
+        }
+      }
+
+      requests.forEach((request) => {
+        messageCounts[request.id] = request.customerMessages.length;
+      });
+      previousCustomerMessageCountsRef.current = messageCounts;
+      previousWaitingCountRef.current = waitingCount;
+      isInitialRequestLoad.current = false;
+      setLiveChatRequests(requests);
+
+      if (!selectedRequestId && requests.length > 0) {
+        setSelectedRequestId(requests[0].id);
+      }
+      if (selectedRequestId && !requests.find((request) => request.id === selectedRequestId)) {
+        setSelectedRequestId(requests[0]?.id ?? null);
+      }
+    } catch (error) {
+      console.error("Failed to load live chat requests:", error);
+    }
+  };
 
   useEffect(() => {
-    setLiveChatRequest(loadStoredChatRequest());
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().catch((error) => console.error("Notification permission request failed:", error));
+    }
 
-    const handleStorage = (event: StorageEvent) => {
-      if (!event.key) return;
-      if (event.key === LIVE_CHAT_STORAGE_KEY) {
-        setLiveChatRequest(event.newValue ? (JSON.parse(event.newValue) as LiveChatRequest) : null);
-      }
-      if (event.key === ADMIN_SETTINGS_STORAGE_KEY) {
-        setSettings(parseAdminSettings());
-      }
-    };
+    void loadLiveChatRequests();
+    const interval = window.setInterval(() => {
+      void loadLiveChatRequests();
+    }, 3000);
 
     const handleSettingsUpdated = () => setSettings(parseAdminSettings());
-
-    window.addEventListener("storage", handleStorage);
     window.addEventListener("admin_settings_updated", handleSettingsUpdated);
+
     return () => {
-      window.removeEventListener("storage", handleStorage);
+      window.clearInterval(interval);
       window.removeEventListener("admin_settings_updated", handleSettingsUpdated);
     };
-  }, []);
+  }, [selectedRequestId]);
 
-  const handleAcceptRequest = () => {
-    if (!liveChatRequest) return;
+  const handleAcceptRequest = async () => {
+    if (!selectedRequest) return;
     const nextRequest: LiveChatRequest = {
-      ...liveChatRequest,
+      ...selectedRequest,
       status: "connected",
       adminMessages: [
-        ...liveChatRequest.adminMessages,
+        ...selectedRequest.adminMessages,
         `Hi, I’m ${settings.liveAgentName} from Chillingan support. I’m here to help you directly.`,
       ],
       updatedAt: Date.now(),
     };
-    saveChatRequest(nextRequest);
-    setLiveChatRequest(nextRequest);
+    await saveChatRequest(nextRequest);
+    setLiveChatRequests((prev) => prev.map((request) => (request.id === nextRequest.id ? nextRequest : request)));
+    setNewCustomerMessages((prev) => ({ ...prev, [nextRequest.id]: false }));
+    setShowNewCustomerReplyAlert(false);
   };
 
-  const handleSendAdminMessage = () => {
-    if (!liveChatRequest || !adminMessage.trim()) return;
+  const handleSendAdminMessage = async () => {
+    if (!selectedRequest || !adminMessage.trim()) return;
     const nextRequest: LiveChatRequest = {
-      ...liveChatRequest,
-      status: liveChatRequest.status === "closed" ? "connected" : liveChatRequest.status,
-      adminMessages: [...liveChatRequest.adminMessages, adminMessage.trim()],
+      ...selectedRequest,
+      status: "connected",
+      adminMessages: [...selectedRequest.adminMessages, adminMessage.trim()],
       updatedAt: Date.now(),
     };
-    saveChatRequest(nextRequest);
-    setLiveChatRequest(nextRequest);
+    await saveChatRequest(nextRequest);
+    setLiveChatRequests((prev) => prev.map((request) => (request.id === nextRequest.id ? nextRequest : request)));
     setAdminMessage("");
+    setNewCustomerMessages((prev) => ({ ...prev, [nextRequest.id]: false }));
+    setShowNewCustomerReplyAlert(false);
   };
 
-  const handleCloseRequest = () => {
-    if (!liveChatRequest) return;
+  const handleCloseRequest = async () => {
+    if (!selectedRequest) return;
     const nextRequest: LiveChatRequest = {
-      ...liveChatRequest,
+      ...selectedRequest,
       status: "closed",
       updatedAt: Date.now(),
     };
-    saveChatRequest(nextRequest);
-    setLiveChatRequest(nextRequest);
+    await saveChatRequest(nextRequest);
+    setLiveChatRequests((prev) => prev.map((request) => (request.id === nextRequest.id ? nextRequest : request)));
+    setNewCustomerMessages((prev) => ({ ...prev, [nextRequest.id]: false }));
+    setShowNewCustomerReplyAlert(false);
+  };
+
+  const handleMarkDone = (requestId: string) => {
+    setRemovedRequestIds((prev) => ({ ...prev, [requestId]: true }));
+    setLiveChatRequests((prev) => {
+      const nextRequests = prev.filter((request) => request.id !== requestId);
+      if (selectedRequestId === requestId) {
+        setSelectedRequestId(nextRequests[0]?.id ?? null);
+      }
+      return nextRequests;
+    });
+    setNewCustomerMessages((prev) => {
+      const next = { ...prev };
+      delete next[requestId];
+      return next;
+    });
+    setShowNewCustomerReplyAlert(false);
+  };
+
+  const getQueueButtonStyles = (request: LiveChatRequest) => {
+    if (selectedRequestId === request.id) {
+      return "block w-full rounded-[18px] border border-blue-500 bg-blue-50 px-4 py-3 text-left transition";
+    }
+    if (request.status === "connected") {
+      return "block w-full rounded-[18px] border border-emerald-400 bg-emerald-50 px-4 py-3 text-left transition";
+    }
+    if (request.status === "closed") {
+      return "block w-full rounded-[18px] border border-red-400 bg-red-50 px-4 py-3 text-left transition";
+    }
+    return "block w-full rounded-[18px] border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300";
   };
 
   const conversation = useMemo(() => {
-    if (!liveChatRequest) return [] as { sender: "customer" | "admin"; text: string }[];
-    const customer = liveChatRequest.customerMessages.map((text) => ({ sender: "customer" as const, text }));
-    const admin = liveChatRequest.adminMessages.map((text) => ({ sender: "admin" as const, text }));
-    return [...customer, ...admin];
-  }, [liveChatRequest]);
+    if (!selectedRequest) return [] as { sender: "customer" | "admin"; text: string }[];
+    const conversation: { sender: "customer" | "admin"; text: string }[] = [];
+    const maxMessages = Math.max(selectedRequest.customerMessages.length, selectedRequest.adminMessages.length);
 
-  const requestLabel = liveChatRequest
-    ? liveChatRequest.status === "waiting"
+    for (let index = 0; index < maxMessages; index += 1) {
+      if (selectedRequest.customerMessages[index] !== undefined) {
+        conversation.push({ sender: "customer", text: selectedRequest.customerMessages[index] });
+      }
+      if (selectedRequest.adminMessages[index] !== undefined) {
+        conversation.push({ sender: "admin", text: selectedRequest.adminMessages[index] });
+      }
+    }
+
+    return conversation;
+  }, [selectedRequest]);
+
+  const requestLabel = selectedRequest
+    ? selectedRequest.status === "waiting"
       ? "Pending live support request"
-      : liveChatRequest.status === "connected"
+      : selectedRequest.status === "connected"
         ? "Active live chat"
         : "Closed live support session"
     : "No live support requests yet";
@@ -196,7 +299,7 @@ export default function SupportChatAdminPanel() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-slate-700">Active Now</p>
-                <p className="text-2xl font-bold text-slate-900">{liveChatRequest ? "1" : "0"}</p>
+                <p className="text-2xl font-bold text-slate-900">{liveChatRequests.filter((request) => request.status === "connected").length}</p>
               </div>
               <div className="rounded-full bg-white/80 p-3">
                 <svg className="h-6 w-6 text-[#be185d]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -210,23 +313,82 @@ export default function SupportChatAdminPanel() {
         <div className="mt-6 grid gap-4 sm:grid-cols-[1.1fr_0.9fr]">
           <div className="rounded-[28px] border border-slate-200 bg-white p-5">
             <p className="text-sm font-semibold text-slate-700">{requestLabel}</p>
-            <p className="mt-2 text-sm text-slate-600">{liveChatRequest ? "Review the customer message and reply directly here." : "When a customer requests live support, the request will appear here."}</p>
+            <p className="mt-2 text-sm text-slate-600">{selectedRequest ? "Review the customer message and reply directly here." : "When a customer requests live support, the request will appear here."}</p>
 
-            {liveChatRequest ? (
+            {showNewRequestAlert && (
+              <div className="mt-4 rounded-[18px] bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900 ring-1 ring-emerald-200">
+                New support request received.
+              </div>
+            )}
+            {showNewCustomerReplyAlert && selectedRequest && newCustomerMessages[selectedRequest.id] && (
+              <div className="mt-4 rounded-[18px] bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900 ring-1 ring-sky-200">
+                New customer reply on the selected chat.
+              </div>
+            )}
+
+            {liveChatRequests.length > 0 && (
+              <div className="mt-4 rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Request queue</p>
+                <div className="mt-3 space-y-2">
+                  {queueRequests.map((request) => (
+                    <button
+                      key={request.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedRequestId(request.id);
+                        setNewCustomerMessages((prev) => ({ ...prev, [request.id]: false }));
+                        setShowNewCustomerReplyAlert(false);
+                      }}
+                      className={getQueueButtonStyles(request)}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className={`text-sm font-semibold ${request.status === "connected" ? "text-emerald-900" : request.status === "closed" ? "text-red-900" : "text-slate-900"}`}>
+                          {request.status === "waiting" ? "Waiting" : request.status === "connected" ? "Connected" : "Closed"}
+                        </span>
+                        <span className={`text-xs font-semibold ${request.status === "connected" ? "text-emerald-700" : request.status === "closed" ? "text-red-700" : "text-slate-500"}`}>
+                          {new Date(request.requestedAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <p className="text-sm text-slate-600 line-clamp-2 flex-1">{request.customerMessages[request.customerMessages.length - 1] ?? "No message yet"}</p>
+                        {newCustomerMessages[request.id] && (
+                          <span className="rounded-full bg-[#f97316] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white">
+                            New
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {selectedRequest ? (
               <div className="mt-5 space-y-4">
                 <div className="rounded-[24px] bg-[#f8fafc] p-4">
                   <p className="text-[13px] font-semibold uppercase tracking-[0.18em] text-[#475569]">Request details</p>
-                  <p className="mt-3 text-sm text-slate-600">Requested {new Date(liveChatRequest.requestedAt).toLocaleString()}.</p>
-                  <p className="mt-2 text-sm text-slate-700">Status: <span className="font-semibold text-slate-900">{liveChatRequest.status}</span></p>
+                  <p className="mt-3 text-sm text-slate-600">Requested {new Date(selectedRequest.requestedAt).toLocaleString()}.</p>
+                  <p className="mt-2 text-sm text-slate-700">Status: <span className="font-semibold text-slate-900">{selectedRequest.status}</span></p>
                 </div>
 
                 <div className="max-h-[260px] overflow-y-auto rounded-[24px] border border-slate-200 bg-[#f7f7ff] p-4">
-                  {conversation.map((message, index) => (
-                    <div key={index} className={`rounded-2xl p-3 ${message.sender === "customer" ? "bg-[#fff3f3] text-[#1f1f1f]" : "bg-[#e2f0ff] text-[#0f172a]"}`}>
-                      <p className="text-sm leading-6">{message.text}</p>
+                  {conversation.length > 0 ? (
+                  conversation.map((message, index) => (
+                    <div key={index} className={`mb-3 flex ${message.sender === "customer" ? "justify-start" : "justify-end"}`}>
+                      <div className={`max-w-[85%] rounded-[28px] p-4 text-sm leading-6 shadow-sm ${
+                        message.sender === "customer"
+                          ? "bg-[#fff3f3] text-[#1f1f1f] rounded-tr-[28px] rounded-br-[28px] rounded-tl-[6px] rounded-bl-[28px]"
+                          : "bg-[#e2f0ff] text-[#0f172a] rounded-tl-[28px] rounded-bl-[28px] rounded-br-[6px] rounded-tr-[28px]"
+                      }`}>
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                          {message.sender === "customer" ? "Customer" : "Admin"}
+                        </p>
+                        <p className="mt-2 break-words">{message.text}</p>
+                      </div>
                     </div>
-                  ))}
-                  {conversation.length === 0 && <p className="text-sm text-slate-500">No messages have been exchanged yet.</p>}
+                  ))
+                ) : (
+                  <p className="text-sm text-slate-500">No messages have been exchanged yet.</p>
+                )}
                 </div>
               </div>
             ) : (
@@ -252,7 +414,7 @@ export default function SupportChatAdminPanel() {
               <div className="mt-4 flex flex-wrap gap-3">
                 <button
                   type="button"
-                  disabled={!liveChatRequest}
+                  disabled={!selectedRequest || selectedRequest.status === "closed"}
                   onClick={handleSendAdminMessage}
                   className="rounded-full bg-[#1f5eff] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#1648c2] disabled:cursor-not-allowed disabled:bg-slate-300"
                 >
@@ -260,7 +422,7 @@ export default function SupportChatAdminPanel() {
                 </button>
                 <button
                   type="button"
-                  disabled={!liveChatRequest || liveChatRequest.status === "connected"}
+                  disabled={!selectedRequest || selectedRequest.status !== "waiting"}
                   onClick={handleAcceptRequest}
                   className="rounded-full border border-[#d1d5db] bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400"
                 >
@@ -268,12 +430,21 @@ export default function SupportChatAdminPanel() {
                 </button>
                 <button
                   type="button"
-                  disabled={!liveChatRequest}
+                  disabled={!selectedRequest || selectedRequest.status === "closed"}
                   onClick={handleCloseRequest}
                   className="rounded-full bg-[#fee2e2] px-4 py-2 text-sm font-semibold text-[#b91c1c] transition hover:bg-[#fecaca] disabled:cursor-not-allowed disabled:bg-slate-200"
                 >
                   Close request
                 </button>
+                {selectedRequest?.status === "closed" && (
+                  <button
+                    type="button"
+                    onClick={() => handleMarkDone(selectedRequest.id)}
+                    className="rounded-full border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Mark as done
+                  </button>
+                )}
               </div>
             </div>
 
